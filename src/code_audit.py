@@ -9,6 +9,12 @@ import folium
 
 #### The dataframe should have columns lat, lon, label
 def load_data(filename):
+    '''
+    This function creates a dataframe from a csv dataset. The dataset's rows are expected to have three 
+    columns: lat, lon, label. Essentially, it contains the outcomes that a classifier gave to individuals
+    in space w.r.t. a target variable.
+    '''
+    
     df = pd.read_csv(filename, index_col=0)
     df.reset_index(drop=True, inplace=True)
 
@@ -16,6 +22,9 @@ def load_data(filename):
 
 
 def get_stats(df, label):
+    '''
+    This function counts the number of examples, and those that have a positive label.
+    '''
     N = len(df)
     P = df.loc[df[label] == 1, label].count()
 
@@ -23,8 +32,17 @@ def get_stats(df, label):
 
 
 def create_rtree(df):
+    '''
+    Builds an r-tree that indexes the points representing the examples in df.
+    
+    NOTE: Can be probably simplified using geopandas.
+    '''
+    
+    # First, create an empty r-tree index
     rtree = index.Index()
 
+    # Then, insert the points in the index, one by one.
+    # There are far more optimized ways to do it, but the library used by the authors seems limited.
     for idx, row in df.iterrows():
         left, bottom, right, top = row['lon'], row['lat'], row['lon'], row['lat']
         rtree.insert(idx, (left, bottom, right, top))
@@ -33,6 +51,12 @@ def create_rtree(df):
 
 
 def filterbbox(df, min_lon, min_lat, max_lon, max_lat):
+    '''
+    This function selects the points within the specified bounding box.
+    
+    NOTE: Can be probably simplified using geopandas.
+    '''
+    
     df = df.loc[df['lon'] >= min_lon]
     df = df.loc[df['lon'] <= max_lon]
     df = df.loc[df['lat'] >= min_lat]
@@ -43,19 +67,37 @@ def filterbbox(df, min_lon, min_lat, max_lon, max_lat):
 
 
 def get_true_types(df, label):
+    '''
+    This function appears to remap the value 3 of a target variable to 0, thus reducing the number of classes.
+    '''
+    
     array = np.array(df[label].values.tolist())
     array[array==3] = 0 ## replace entries with label 3 to have label 0 (for the LAR dataset)
     return array
 
 
 def get_random_types(N, P):
+    '''
+    The function numpy.random.binomial(n, p, size=None) generates random samples from a binomial distribution, representing the number of successes in n independent trials, each with a success probability p. The size parameter determines the number N of sets of trials. 
+    The way the authors use the function below, means that we have N sets of just 1 trial, and in that trial the probability of success is N/P. So, this means that across the N sets of trails, a fraction of ~P sets will be successful.
+    
+    This function is used when performing simulations.
+    
+    TODO: check the function's correctness, and where the authors use it.
+    '''
+    
     return np.random.binomial(size=N, n=1, p=P/N)
 
 
 
 def get_simple_stats(points, types):
+    '''
+    Computes the fraction of positive labels p/n.
+    '''
+    
     n = len(points)
     p = types[points].sum()
+    
     if n>0:
         rho = p/n
     else:
@@ -65,13 +107,20 @@ def get_simple_stats(points, types):
 
 
 def compute_pos_rate(points, types):
+    '''
+    Same as above.
+    '''
+    
     n = len(points)
     p = types[points].sum()
     return p/n
 
 
-# get the coords of a point id
 def id2loc(df, point_id):
+    '''
+    Get the coordinates of a point id.
+    '''
+    
     lat = df.loc[[point_id]]['lat'].values[0]
     lon = df.loc[[point_id]]['lon'].values[0]
     return (lat, lon)
@@ -79,7 +128,9 @@ def id2loc(df, point_id):
 
 
 def query_range_box(df, rtree, xmin, xmax, ymin, ymax):
-    
+    '''
+    Perform a range query within the r-tree.
+    '''
     
     left, bottom, right, top = xmin, ymin, xmax, ymax
 
@@ -89,28 +140,24 @@ def query_range_box(df, rtree, xmin, xmax, ymin, ymax):
 
 
 def query_range(df, rtree, center, radius):
-    ## for now returns points within square
+    '''
+    Retrieves the location of a point (via its ID), then defines a square buffer around it (with side length equal to twice the radius). Then compute a range query between this square within the r-tree.
+    '''
     
     lat, lon = id2loc(df, center)
 
     left, bottom, right, top = lon - radius, lat - radius, lon + radius, lat + radius
     result = list( rtree.intersection((left, bottom, right, top)) )
 
-    # tmp_result = []
-    # for point in result:
-    #     p_lat, p_lon = id2loc(df, point)
-    #     dist = math.sqrt( (p_lon-lon)**2 + (p_lat-lat)**2 )
-    #     if dist <= radius:
-    #         tmp_result.append(point)
-    # result = tmp_result
-
-
     return result
 
 
 def query_nn(df, rtree, center, k):
+    '''
+    Performs a k-NN query within the r-tree.
+    '''
+    
     lat, lon = id2loc(df, center)
-
     return list(rtree.nearest( [lon, lat], k))
 
 
@@ -262,11 +309,12 @@ def scan_alt_worlds(n_alt_worlds, regions, N, P, verbose=False):
 
 
 def get_signif_threshold(signif_level, n_alt_worlds, regions, N, P):
-    """ returns a statistic value such any region with statistic above that value is unfair at significance level `signif_level`; i.e., has p-value lower than `signif_level`  """
+    """ 
+    Returns a statistic value such any region with statistic above that value is unfair at significance level `signif_level`; i.e., has p-value lower than `signif_level`  
+    """
+    
     alt_worlds, _ = scan_alt_worlds(n_alt_worlds, regions, N, P)
-
     k = int(signif_level * n_alt_worlds)
-
     signif_thresh = alt_worlds[k][2] ## get the max likelihood at position k
 
     return signif_thresh
@@ -274,7 +322,6 @@ def get_signif_threshold(signif_level, n_alt_worlds, regions, N, P):
 
 
 ######## partioning-based scan
-
 
 def scan_partitioning(regions, types):
     rhos = []
@@ -325,7 +372,7 @@ def create_points(n, rho):
 
 
 
-######## draw map functions
+######## draw map functions (used to plot maps with Folium) ######
 
 def show_grid_region(df, grid_info, types, region):
 
