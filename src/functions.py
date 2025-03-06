@@ -211,28 +211,32 @@ def compute_max_likeli(n, p, N, P):
     ## handle extreme cases
 
     rho = P/N
-    l0max = P*math.log(rho) + (N-P)*math.log(1-rho)
+    l0max = P*math.log(rho) + (N-P)*math.log(1-rho) # Equation in page 488 of paper.
 
-    # Case in which a region contains zero or all points: l1_max = l0_max
+
+    ### Compute l^1_{max} ###
+
+    # Case in which a region contains zero points or it represents the entire space: l1_max collapses to l0_max.
     if n == 0 or n == N: ## rho_in == 0/0 or rho_out == 0/0
         l1max = l0max
         return l1max
 
 
-    rho_in = p/n
-    rho_out = (P-p)/(N-n)
+    rho_in = p/n            # Fraction (probability) of positive examples within a given region.  Corresponds to \rho_0 in the paper.
+    rho_out = (P-p)/(N-n)   # Fraction (probability) of positive examples outside a given region. Corresponds to \rho_1 in the paper.
 
-
-    if p == 0: ## rho_in == 0
-        l1max = P*math.log(rho_out) + (N-n - P)*math.log(1-rho_out)
-    elif p == n and p == P: ## rho_in == 1 and rho_out == 0
-        l1max = 0
-    elif p == n: ## rho_in == 1
-        l1max = (P-p)*math.log(rho_out) + (N-P)*math.log(1-rho_out)
-    elif p == P: ## rho_out == 0
-        l1max = p*math.log(rho_in) + (n-p)*math.log(1-rho_in)
-    else:
-        l1max =  p*math.log(rho_in) + (n-p)*math.log(1-rho_in) + (P-p)*math.log(rho_out) + (N-n - (P-p))*math.log(1-rho_out)
+    # Manage the various corner cases, which occur when we have a logarithm of 0, which is undefined.
+    ## Case 1: rho_in == 0, thus we have a log(0).
+    if p == 0: l1max = P*math.log(rho_out) + (N-n - P)*math.log(1-rho_out)
+    ## Case 2: a region contains only positives, and it contains ALL the positives in the space. 
+    #          In this case, rho_in == 1, rho_out == 0, and thus from the general formula we would have 0 * inf + 0 * inf = 0
+    elif p == n and p == P: l1max = 0
+    ## Case 3: rho_in == 1, hence p*math.log(rho_in) + (n-p)*math.log(1-rho_in) = 0 because we have a log(1) == 0.
+    elif p == n: l1max = (P-p)*math.log(rho_out) + (N-P)*math.log(1-rho_out)
+    ## Case 4: rho_out == 0, hence (P-p)*math.log(rho_out) + (N-n - (P-p))*math.log(1-rho_out) because we have a log(1) == 0
+    elif p == P: l1max = p*math.log(rho_in) + (n-p)*math.log(1-rho_in)
+    # DEFAULT normal case: 
+    else: l1max = p*math.log(rho_in) + (n-p)*math.log(1-rho_in) + (P-p)*math.log(rho_out) + (N-n - (P-p))*math.log(1-rho_out)
 
     return l1max
 
@@ -266,23 +270,31 @@ def compute_statistic(n, p, N, P, direction='both', verbose=False):
     
     l0max = P*math.log(rho) + (N-P)*math.log(1-rho)    
 
-
+    # Case 1: One-sided hypotesis test in which only interested in cases where the inside positive rate is lower than the outside positive rate,
+    # i.e., a region is being disadvantaged w.r.t. the rest. 
+    # NOTE: Not used in the source code.
     if direction == 'less_in':
         ### inside < outside
         if rho_in < rho_out:
             l1max = compute_max_likeli(n, p, N, P)
         else:
             l1max = l0max
+    # Case 2: One-sided hypotesis test in which only interested in cases where the inside positive rate is higher than the outside positive rate, i.e.,
+    # a region is being advantaged w.r.t. the rest. 
+    # NOTE: Not used in the source code.
     elif direction == 'less_out':
        ### inside > outside
         if rho_in > rho_out:
             l1max = compute_max_likeli(n, p, N, P)
         else:
             l1max = l0max
+    # Case 3: Two-sided hypotesis test.
+    # NOTE: this is the only option used in the source code.
     else:
         ### inside != outside
         l1max = compute_max_likeli(n, p, N, P)
 
+    # This difference represents the computation of the logarithmic max likelihood ratio.
     statistic = l1max - l0max
 
     if verbose:
@@ -328,21 +340,35 @@ def scan_regions(regions, types, N, P, direction='both', verbose=False):
     
     statistics = []
 
+    # For each region R, compute:
+    # 1) the number of points in the region, n
+    # 2) the number of points with a positive label, p
+    # 3) the fraction of points with a positive label, rho = p/n.
+    # 4) The likelihood ratio computed as log(\frac{l_1^{max}(R)}{l_0^{max}}) = log(l_1^{max}(R)) - log(l_0^{max})
     for region in regions:
         # Computes the fraction of positive labels p/n.
         n, p, rho = get_simple_stats(region['points'], types)
         statistics.append(compute_statistic(n, p, N, P, direction=direction))
     
-    idx = np.argmax(statistics)
 
+    # Find the region with the highest likelihood ratio, i.e., the region which contradicts the most
+    # the null hypotesis for which a region is spatially fair.
+    # NOTE: This will be used compared against the likelihood ratios achieved by the MonteCarlo simulation 
+    # implemented in 'scan_alt_worlds'.
+    idx = np.argmax(statistics)
     max_likelihood = statistics[idx]
 
+
+    # DEBUG: print info on screen if verbose is True.
     if verbose:
         print('range', np.amin(statistics), np.amax(statistics))
         print('max likelihood', max_likelihood)
-        n, p, rho = get_simple_stats(regions[idx]['points'], types)
+
+        # NOTE: The print below concerns the region with the highest max likelihood ratio,
+        #       but it was already commented in the original source.
+        #n, p, rho = get_simple_stats(regions[idx]['points'], types)
         # print(f"at ({regions[idx]['center']}, {regions[idx]['radius']})" )
-        compute_statistic(n, p, N, P, direction=direction, verbose=verbose)
+        #compute_statistic(n, p, N, P, direction=direction, verbose=verbose)
     
     return regions[idx], max_likelihood, statistics
 
