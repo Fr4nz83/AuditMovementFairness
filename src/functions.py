@@ -24,6 +24,7 @@ def load_data(filename):
 def get_stats(df, label):
     '''
     This function counts the number of examples, and those that have a positive label.
+    Here positive is considered "1", different values are considered negative.
     '''
     N = len(df)
     P = df.loc[df[label] == 1, label].count()
@@ -35,7 +36,8 @@ def create_rtree(df):
     '''
     Builds an r-tree that indexes the points representing the examples in df.
     
-    NOTE: Can be probably simplified using geopandas.
+    TODO: The rtree creation can be hugely optimized by using bulk loading when instantiating
+          the rtree.
     '''
     
     # First, create an empty r-tree index
@@ -46,6 +48,24 @@ def create_rtree(df):
     for idx, row in df.iterrows():
         left, bottom, right, top = row['lon'], row['lat'], row['lon'], row['lat']
         rtree.insert(idx, (left, bottom, right, top))
+    
+    return rtree
+
+
+def create_rtree_v2(df):
+    '''
+    Builds an r-tree that indexes the points representing the examples in df
+    using bulk loading for better efficiency.
+    '''
+    
+    # Create an iterable of (id, (left, bottom, right, top)) tuples
+    items = (
+        (idx, (row['lon'], row['lat'], row['lon'], row['lat']), None) for idx, row in df.iterrows()
+    )
+    # print("Number of items to bulk-load:", len(list(items)))
+    
+    # Build the r-tree in one step using bulk loading
+    rtree = index.Index(items)
     
     return rtree
 
@@ -68,7 +88,8 @@ def filterbbox(df, min_lon, min_lat, max_lon, max_lat):
 
 def get_true_types(df, label):
     '''
-    This function appears to remap the value 3 of a target variable to 0, thus reducing the number of classes.
+    This function is used to manage the LAR dataset, and appears to remap the value 3 of 
+    a target variable to 0, thus reducing the number of classes.
     '''
     
     array = np.array(df[label].values.tolist())
@@ -162,22 +183,29 @@ def query_nn(df, rtree, center, k):
 
 
 def create_seeds(df, rtree, n_seeds):
+    '''
+    Given a set of points, cluster them and then consider the clusters' centroids. Then, for each
+    centroid find the nearest point in the r-tree: this point will be used as a seed.
+    '''
     
-    # Compute clusters with k-means
+    # Compute clusters over the points in df with k-means.
     X = df[['lon', 'lat']].to_numpy()
     kmeans = KMeans(n_clusters=n_seeds, n_init='auto').fit(X)
     cluster_labels = kmeans.labels_
     cluster_centers = kmeans.cluster_centers_
     
-    # Pick seeds from cluster centroids
+    # For each cluste centroid, find the nearest point from the real data, and use it as seed.
     seeds = []
     for c in cluster_centers:
         seeds.append(list(rtree.nearest([c[0], c[1]], 1))[0])
-    
+ 
     return seeds
 
 
 def compute_max_likeli(n, p, N, P):
+    '''
+    Computes l1_max. Used in function 'compute_statistics' (see below)
+    '''
     
     ## l1max =  p*math.log(rho_in) + (n-p)*math.log(1-rho_in) + (P-p)*math.log(rho_out) + (N-n - (P-p))*math.log(1-rho_out)
     ## handle extreme cases
@@ -185,6 +213,7 @@ def compute_max_likeli(n, p, N, P):
     rho = P/N
     l0max = P*math.log(rho) + (N-P)*math.log(1-rho)
 
+    # Case in which a region contains zero or all points: l1_max = l0_max
     if n == 0 or n == N: ## rho_in == 0/0 or rho_out == 0/0
         l1max = l0max
         return l1max
@@ -210,6 +239,14 @@ def compute_max_likeli(n, p, N, P):
 
 
 def compute_statistic(n, p, N, P, direction='both', verbose=False):
+    '''
+    Computes the difference (l1max – l0max), which is the (logarithm of the) likelihood ratio statistic.
+
+    The parameter direction lets you test one-sided hypotheses (for example, “inside rate < outside rate” or vice versa) versus a two-sided alternative.
+    
+    Purpose: This statistic is used to detect regions where the observed rate deviates significantly from the overall rate—indicative of potential spatial unfairness.
+    '''
+    
     ## l1max - l0max
 
     if verbose:
@@ -257,9 +294,16 @@ def compute_statistic(n, p, N, P, direction='both', verbose=False):
 
 
 def create_regions(df, rtree, seeds, radii):
+    '''
+    Given a set of seed point IDs and a list of radii, this function creates candidate regions. For each seed and radius, it queries the spatial index (using query_range) to get all points in that region and packages the information into a dictionary. Note that each region is a square, centered on a point, with side
+    equal to the radius.
+    Purpose: To generate many regions whose fairness (or lack thereof) can be audited.
+    '''
+    
     regions = []
     for seed in seeds:
-        for radius in radii: 
+        for radius in radii:
+            # Retrieve the points within the ball of radius 'radius' centered on 'seed'.
             points = query_range(df, rtree, seed, radius)
             region = {
                 'points' : points,
@@ -272,12 +316,21 @@ def create_regions(df, rtree, seeds, radii):
 
 
 def scan_regions(regions, types, N, P, direction='both', verbose=False):
-    """ computes the statistic for all regions, and returns the region with max likelihood and the max likelihood """
+    '''
+    Iterates over the candidate regions, computes the likelihood statistic for each (using get_simple_stats and compute_statistic), and returns:
+
+    - The region with the highest statistic.
+    - The maximum statistic value.
+    - The list of statistics for all regions.
+
+    Purpose: To “scan” the geographical space for the most anomalous (or unfair) region.
+    '''
+    
     statistics = []
 
     for region in regions:
+        # Computes the fraction of positive labels p/n.
         n, p, rho = get_simple_stats(region['points'], types)
-
         statistics.append(compute_statistic(n, p, N, P, direction=direction))
     
     idx = np.argmax(statistics)
@@ -297,6 +350,7 @@ def scan_regions(regions, types, N, P, direction='both', verbose=False):
 
 def scan_alt_worlds(n_alt_worlds, regions, N, P, verbose=False):
     """ returns all alt worlds sorted by max likelihood, and the max likelihood """
+    
     alt_worlds = []
     for _ in range(n_alt_worlds):
         alt_types = get_random_types(N, P)
@@ -324,6 +378,12 @@ def get_signif_threshold(signif_level, n_alt_worlds, regions, N, P):
 ######## partioning-based scan
 
 def scan_partitioning(regions, types):
+    '''
+    Rather than using likelihood ratios, this function computes a “score” for each region based on the squared difference between its positive rate and the mean rate across all regions. It returns the region with the maximum score and the array of scores.
+    
+    The purpose is to offer an alternative (partitioning-based) metric for detecting regions with anomalous rates.
+    '''
+    
     rhos = []
     for region in regions:
         n = len(region['points'])
@@ -337,8 +397,12 @@ def scan_partitioning(regions, types):
     rhos = np.array(rhos)
     # print('mean_rho', mean_rho)
     # print(rhos[:10])
+    
+    
+    # For each region, we compute the squared difference between its positive rate and the mean rate across all regions.
     scores = (rhos - mean_rho)**2
-
+    
+    # Find the score and ID of the region yielding the maximum score.
     max_score = np.nanmax(scores)
     idx = np.nanargmax(scores)
 
@@ -347,9 +411,16 @@ def scan_partitioning(regions, types):
     return regions[idx], max_score, scores
 
 
-######## create synthetic datasets
+
+######## create synthetic datasets #######
 
 def create_points(n, rho):
+    '''
+    Generates a synthetic dataset of n points with random (x, y) coordinates (each uniformly drawn from [0, 1]). It also creates a binary types array where exactly n \cdot rho of the points are positive. (The function adjusts the initially random draws to guarantee the exact number of positives.)
+
+    Purpose: To allow testing and validation of the auditing procedures on controlled synthetic data.
+    '''
+    
     points = []
     types = np.random.binomial(size=n, n=1, p=rho)
     
@@ -387,7 +458,7 @@ def show_grid_region(df, grid_info, types, region):
 
     i, j = region['grid_loc']
 
-    mapit = folium.Map(location=[37.09, -95.71], zoom_start=5, tiles="Stamen Toner")
+    mapit = folium.Map(location=[37.09, -95.71], zoom_start=5, prefer_canvas = True, tiles='cartodbpositron')
 
     # pos_group = folium.FeatureGroup("Positive")
     # neg_group = folium.FeatureGroup("Negative")
@@ -429,7 +500,7 @@ def show_grid_regions(df, grid_info, types, regions):
     lat_n = grid_info['lat_n']
 
 
-    mapit = folium.Map(location=[37.09, -95.71], zoom_start=5, tiles="Stamen Toner")
+    mapit = folium.Map(location=[37.09, -95.71], zoom_start=5, prefer_canvas = True, tiles='cartodbpositron')
 
     for region in regions:
 
@@ -459,7 +530,7 @@ def show_grid_regions(df, grid_info, types, regions):
 
 def show_circular_region(df, types, region):
 
-    mapit = folium.Map(location=[37.09, -95.71], zoom_start=5, tiles="Stamen Toner")
+    mapit = folium.Map(location=[37.09, -95.71], zoom_start=5, prefer_canvas = True, tiles='cartodbpositron')
 
     r = region['radius'] * 111320 ## roughly convert diff in lat/lon to meters
 
@@ -478,7 +549,7 @@ def show_circular_region(df, types, region):
 
 def show_circular_regions(df, types, regions):
     
-    mapit = folium.Map(location=[37.09, -95.71], zoom_start=5, tiles="Stamen Toner")
+    mapit = folium.Map(location=[37.09, -95.71], zoom_start=5, prefer_canvas = True, tiles='cartodbpositron')
 
     for region in regions:
         n, p, rho = get_simple_stats(region['points'], types)
