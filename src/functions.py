@@ -5,6 +5,8 @@ import random
 from sklearn.cluster import KMeans
 import math
 import folium
+import multiprocessing
+from functools import partial
 
 
 #### The dataframe should have columns lat, lon, label
@@ -100,11 +102,9 @@ def get_true_types(df, label):
 def get_random_types(N, P):
     '''
     The function numpy.random.binomial(n, p, size=None) generates random samples from a binomial distribution, representing the number of successes in n independent trials, each with a success probability p. The size parameter determines the number N of sets of trials. 
-    The way the authors use the function below, means that we have N sets of just 1 trial, and in that trial the probability of success is N/P. So, this means that across the N sets of trails, a fraction of ~P sets will be successful.
+    The way the authors use the function below, means that we have N sets of just 1 trial, and in that trial the probability of success is N/P. So, this means that across the N sets of trials, a fraction of ~P sets will be successful.
     
     This function is used when performing simulations.
-    
-    TODO: check the function's correctness, and where the authors use it.
     '''
     
     return np.random.binomial(size=N, n=1, p=P/N)
@@ -332,7 +332,7 @@ def scan_regions(regions, types, N, P, direction='both', verbose=False):
     Iterates over the candidate regions, computes the likelihood statistic for each (using get_simple_stats and compute_statistic), and returns:
 
     - The region with the highest statistic.
-    - The maximum statistic value.
+    - The maximum statistic value found.
     - The list of statistics for all regions.
 
     Purpose: To “scan” the geographical space for the most anomalous (or unfair) region.
@@ -377,23 +377,52 @@ def scan_regions(regions, types, N, P, direction='both', verbose=False):
 def scan_alt_worlds(n_alt_worlds, regions, N, P, verbose=False):
     """ returns all alt worlds sorted by max likelihood, and the max likelihood """
     
+    # Below we conduct hypotesis testing on #n_alt_worlds simulated worlds.
     alt_worlds = []
     for _ in range(n_alt_worlds):
+        # Step 1: assign an outcome to the N examples, according to the binomial distribution where the positive label has probability P.
+        #         Recall that the probability P of success is computed by looking at all the space, and that we are assuming that the 
+        #         prob. distribution behind the labels is binomial.  
         alt_types = get_random_types(N, P)
+        
+        # Step 2: conduct the hypotesis test.
+        # NOTE: the 'direction' input parameter here is set implicitly to 'both'.
         alt_best_region, alt_max_likeli, _ = scan_regions(regions, alt_types, N, P, verbose=verbose)
+        
+        # Step 3; take note of the labels assigned in this simulation, the max likelihood ratio, and the region behind it.
         alt_worlds.append((alt_types, alt_best_region, alt_max_likeli))
 
+    # Sort the simulation according 
     alt_worlds.sort(key=lambda x: -x[2])
 
     return alt_worlds, alt_worlds[0][2]
 
 
-def get_signif_threshold(signif_level, n_alt_worlds, regions, N, P):
+def simulation(regions, N, P, verbose, _):
+    alt_types = get_random_types(N, P)
+    alt_best_region, alt_max_likeli, _ = scan_regions(regions, alt_types, N, P, verbose=verbose)
+    return (alt_types, alt_best_region, alt_max_likeli)
+
+def scan_alt_worlds_parallel(n_alt_worlds, regions, N, P, verbose=False):
+    # Use a process pool to run the simulations in parallel.
+    with multiprocessing.Pool() as pool:
+        # Use partial to fix the other arguments for our helper.
+        func = partial(simulation, regions, N, P, verbose)
+        alt_worlds = pool.map(func, range(n_alt_worlds))
+    
+    # Sort the results and return as before.
+    alt_worlds.sort(key=lambda x: -x[2])
+    return alt_worlds, alt_worlds[0][2]
+
+
+def get_signif_threshold(signif_level, n_alt_worlds, regions, N, P, parallel = False):
     """ 
     Returns a statistic value such any region with statistic above that value is unfair at significance level `signif_level`; i.e., has p-value lower than `signif_level`  
     """
     
-    alt_worlds, _ = scan_alt_worlds(n_alt_worlds, regions, N, P)
+    # Step 1 - Conduct 'n_alt_worlds' simulations. For each of them, we find the max likelihood ratio. We store and sort all these ratios
+    #          in a list: this list represents an empirical distribution of the max likelihood ratio
+    alt_worlds, _ = scan_alt_worlds_parallel(n_alt_worlds, regions, N, P) if parallel else scan_alt_worlds(n_alt_worlds, regions, N, P)
     k = int(signif_level * n_alt_worlds)
     signif_thresh = alt_worlds[k][2] ## get the max likelihood at position k
 
