@@ -246,7 +246,7 @@ def compute_statistic(n, p, N, P, direction='both', verbose=False):
     '''
     Computes the difference (l1max – l0max), which is the (logarithm of the) likelihood ratio statistic.
 
-    The parameter direction lets you test one-sided hypotheses (for example, “inside rate < outside rate” or vice versa) versus a two-sided alternative.
+    The parameter 'direction' lets you test one-sided hypotheses (for example, “inside rate < outside rate” or vice versa) versus a two-sided alternative.
     
     Purpose: This statistic is used to detect regions where the observed rate deviates significantly from the overall rate—indicative of potential spatial unfairness.
     '''
@@ -392,7 +392,7 @@ def scan_alt_worlds(n_alt_worlds, regions, N, P, verbose=False):
         # Step 3; take note of the labels assigned in this simulation, the max likelihood ratio, and the region behind it.
         alt_worlds.append((alt_types, alt_best_region, alt_max_likeli))
 
-    # Sort the simulation according 
+    # Sort the results from the simulations, according to their max likelihood ratio.
     alt_worlds.sort(key=lambda x: -x[2])
 
     return alt_worlds, alt_worlds[0][2]
@@ -410,7 +410,7 @@ def scan_alt_worlds_parallel(n_alt_worlds, regions, N, P, verbose=False):
         func = partial(simulation, regions, N, P, verbose)
         alt_worlds = pool.map(func, range(n_alt_worlds))
     
-    # Sort the results and return as before.
+    # Sort the results and return the highest max likelihood ratio.
     alt_worlds.sort(key=lambda x: -x[2])
     return alt_worlds, alt_worlds[0][2]
 
