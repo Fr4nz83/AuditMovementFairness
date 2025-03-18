@@ -90,8 +90,8 @@ def filterbbox(df, min_lon, min_lat, max_lon, max_lat):
 
 def get_true_types(df, label):
     '''
-    This function is used to manage the LAR dataset, and appears to remap the value 3 of 
-    a target variable to 0, thus reducing the number of classes.
+    This function is used to manage the LAR dataset, and appears to remap the label 3 of 
+    the target variable to 0, thus reducing the number of classes to two.
     '''
     
     array = np.array(df[label].values.tolist())
