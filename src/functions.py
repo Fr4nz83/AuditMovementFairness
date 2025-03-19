@@ -432,6 +432,36 @@ def get_signif_threshold(signif_level, n_alt_worlds, regions, N, P, parallel = F
 
 ######## partioning-based scan
 
+def create_partitioning(df, rtree, lon_min: float, lon_max: float, lat_min: float, lat_max: float, lon_n: float, lat_n: float):
+    grid_info = {}
+    grid_info['lon_min'] = lon_min
+    grid_info['lon_max'] = lon_max
+    grid_info['lat_min'] = lat_min
+    grid_info['lat_max'] = lat_max
+    grid_info['lat_n'] = lat_n
+    grid_info['lon_n'] = lon_n
+
+    grid_loc2_idx = {} ## maps (x,y) grid_loc coords to an index in the partitions array
+
+    partitions = []
+    for i in range(lat_n):
+        lat_start = lat_min + (i/lat_n)*(lat_max - lat_min)
+        lat_end = lat_min + ((i+1)/lat_n)*(lat_max - lat_min)
+        for j in range(lon_n):
+            lon_start = lon_min + (j/lon_n)*(lon_max - lon_min)
+            lon_end = lon_min + ((j+1)/lon_n)*(lon_max - lon_min)
+
+            points = query_range_box(df, rtree, lon_start, lon_end, lat_start, lat_end)
+            # print(len(points))
+            partition  = {
+                'grid_loc': (j, i),
+                'points' : points,
+            }
+            grid_loc2_idx[(j,i)] = len(partitions)
+            partitions.append(partition)
+    
+    return grid_info, grid_loc2_idx, partitions
+
 def scan_partitioning(regions, types):
     '''
     Rather than using likelihood ratios, this function computes a “score” for each region based on the squared difference between its positive rate and the mean rate across all regions. It returns the region with the maximum score and the array of scores.
