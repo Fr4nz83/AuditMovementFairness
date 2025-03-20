@@ -1,3 +1,4 @@
+import numpy as np
 import geopandas as gpd
 import folium
 from .functions import get_simple_stats
@@ -68,7 +69,7 @@ def create_traj_partitioning(gdf_traj: gpd.GeoDataFrame,
     return grid_info, grid_loc2_idx, partitions
 
 
-def show_traj_grid_regions(traj_df, grid_info, types, normal_regions, significant_regions):
+def show_traj_grid_regions(traj_df, grid_info, types, normal_regions, significant_regions, label_trajs=None):
 
     lon_min = grid_info['lon_min']
     lon_max = grid_info['lon_max']
@@ -78,8 +79,8 @@ def show_traj_grid_regions(traj_df, grid_info, types, normal_regions, significan
     lon_n = grid_info['lon_n']
     lat_n = grid_info['lat_n']
 
-
     mapit = folium.Map(location=[37.09, -95.71], zoom_start=5, prefer_canvas = True, tiles='cartodbpositron')
+
 
     for region in normal_regions:
         i, j = region['grid_loc']
@@ -97,7 +98,8 @@ def show_traj_grid_regions(traj_df, grid_info, types, normal_regions, significan
                          fill=True,
                          fill_color="blue",     # Choose any color you want
                          fill_opacity=0.2,      # Adjust the opacity as needed
-                         tooltip=f'# examples={n}, # positives={p}, ratio={rho:.2f}').add_to(mapit)
+                         tooltip=f'ID cell=({i},{j}), # examples={n}, # positives={p}, ratio={rho:.2f}').add_to(mapit)
+
 
     for region in significant_regions:
         i, j = region['grid_loc']
@@ -115,10 +117,44 @@ def show_traj_grid_regions(traj_df, grid_info, types, normal_regions, significan
                   fill=True,
                   fill_color="red",     # Choose any color you want
                   fill_opacity=0.5,      # Adjust the opacity as needed
-                  tooltip=f'# examples={n}, # positives={p}, ratio={rho:.2f}').add_to(mapit)
+                  tooltip=f'ID cell=({i},{j}), # examples={n}, # positives={p}, ratio={rho:.2f}').add_to(mapit)
 
-    # TODO: Draw the trajectories.
+
+    # Plot the trajectories if the user wants to.
+    if label_trajs is not None:
+      # Loop through each trajectory in the GeoDataFrame
+      for traj_geo, label in zip(traj_df['geometry'], traj_df[label_trajs]):
+        # Get coordinates of the LineString (each coordinate is in (lon, lat))
+        # Folium expects [lat, lon], so we swap the order via numpy's slicing.
+        latlon_coords = np.array(traj_geo.coords)[:, [1, 0]]
+        
+        # Choose color based on label: red for 0, blue for 1
+        color = 'red' if label == 0 else 'blue'
+        
+        # Add the PolyLine to the map with a slight thickness and transparency
+        folium.PolyLine(latlon_coords, color=color, weight=1, opacity=0.7).add_to(mapit)
+
 
     mapit.fit_bounds([(lat_min, lon_min), (lat_max, lon_max)])
-
     return mapit
+
+
+def plot_classified_trajectories(gdf, name_column_label) :
+    m = folium.Map(prefer_canvas=True)
+    
+    # Loop through each trajectory in the GeoDataFrame
+    for traj_geo, label in zip(gdf['geometry'], gdf[name_column_label]):
+        # Get coordinates of the LineString (each coordinate is in (lon, lat))
+        # Folium expects [lat, lon], so we swap the order via numpy's slicing.
+        latlon_coords = np.array(traj_geo.coords)[:, [1, 0]]
+        
+        # Choose color based on label: red for 0, blue for 1
+        color = 'red' if label == 0 else 'blue'
+        
+        # Add the PolyLine to the map with a slight thickness and transparency
+        folium.PolyLine(latlon_coords, color=color, weight=1, opacity=0.7).add_to(m)
+    
+    # Compute the bounding box containing all the trajectories, and use it to set the map's initial view.
+    bbox = gdf.total_bounds.reshape(2, 2)[:, [1, 0]].tolist()
+    m.fit_bounds(bbox)
+    return m
