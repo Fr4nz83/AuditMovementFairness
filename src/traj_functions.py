@@ -1,4 +1,7 @@
 import geopandas as gpd
+import folium
+from .functions import get_simple_stats
+
 
 def create_traj_partitioning(gdf_traj: gpd.GeoDataFrame,
                              lon_n: int, lat_n: int) -> tuple[dict, dict, list]:
@@ -63,3 +66,59 @@ def create_traj_partitioning(gdf_traj: gpd.GeoDataFrame,
             partitions.append(partition)
     
     return grid_info, grid_loc2_idx, partitions
+
+
+def show_traj_grid_regions(traj_df, grid_info, types, normal_regions, significant_regions):
+
+    lon_min = grid_info['lon_min']
+    lon_max = grid_info['lon_max']
+    lat_min = grid_info['lat_min']
+    lat_max = grid_info['lat_max']
+
+    lon_n = grid_info['lon_n']
+    lat_n = grid_info['lat_n']
+
+
+    mapit = folium.Map(location=[37.09, -95.71], zoom_start=5, prefer_canvas = True, tiles='cartodbpositron')
+
+    for region in normal_regions:
+        i, j = region['grid_loc']
+
+        lon_start = lon_min + (i/lon_n)*(lon_max - lon_min)
+        lon_end = lon_min + ((i+1)/lon_n)*(lon_max - lon_min)
+
+        lat_start = lat_min + (j/lat_n)*(lat_max - lat_min)
+        lat_end = lat_min + ((j+1)/lat_n)*(lat_max - lat_min)
+
+        n, p, rho = get_simple_stats(region['points'], types)
+
+        folium.Rectangle([(lat_start,lon_start), (lat_end,lon_end)],
+                         weight=0, #removes border
+                         fill=True,
+                         fill_color="blue",     # Choose any color you want
+                         fill_opacity=0.2,      # Adjust the opacity as needed
+                         tooltip=f'# examples={n}, # positives={p}, ratio={rho:.2f}').add_to(mapit)
+
+    for region in significant_regions:
+        i, j = region['grid_loc']
+
+        lon_start = lon_min + (i/lon_n)*(lon_max - lon_min)
+        lon_end = lon_min + ((i+1)/lon_n)*(lon_max - lon_min)
+
+        lat_start = lat_min + (j/lat_n)*(lat_max - lat_min)
+        lat_end = lat_min + ((j+1)/lat_n)*(lat_max - lat_min)
+
+        n, p, rho = get_simple_stats(region['points'], types)
+
+        folium.Rectangle([(lat_start,lon_start), (lat_end,lon_end)],
+                  weight=0, #removes border
+                  fill=True,
+                  fill_color="red",     # Choose any color you want
+                  fill_opacity=0.5,      # Adjust the opacity as needed
+                  tooltip=f'# examples={n}, # positives={p}, ratio={rho:.2f}').add_to(mapit)
+
+    # TODO: Draw the trajectories.
+
+    mapit.fit_bounds([(lat_min, lon_min), (lat_max, lon_max)])
+
+    return mapit
