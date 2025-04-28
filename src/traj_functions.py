@@ -158,3 +158,24 @@ def plot_classified_trajectories(gdf, name_column_label) :
     bbox = gdf.total_bounds.reshape(2, 2)[:, [1, 0]].tolist()
     m.fit_bounds(bbox)
     return m
+
+
+def plot_datashader_classified_trajectories(gdf, name_column_label) :
+    m = folium.Map(prefer_canvas=True)
+    
+    # Loop through each trajectory in the GeoDataFrame
+    for traj_geo, label in zip(gdf['geometry'], gdf[name_column_label]):
+        # Get coordinates of the LineString (each coordinate is in (lon, lat))
+        # Folium expects [lat, lon], so we swap the order via numpy's slicing.
+        latlon_coords = np.array(traj_geo.coords)[:, [1, 0]]
+        
+        # Choose color based on label: red for 0, blue for 1
+        color = 'red' if label == 0 else 'blue'
+        
+        # Add the PolyLine to the map with a slight thickness and transparency
+        folium.PolyLine(latlon_coords, color=color, weight=1, opacity=0.7).add_to(m)
+    
+    # Compute the bounding box containing all the trajectories, and use it to set the map's initial view.
+    bbox = gdf.total_bounds.reshape(2, 2)[:, [1, 0]].tolist()
+    m.fit_bounds(bbox)
+    return m

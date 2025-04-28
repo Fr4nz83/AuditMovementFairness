@@ -464,7 +464,9 @@ def create_partitioning(df, rtree, lon_min: float, lon_max: float, lat_min: floa
 
 def scan_partitioning(regions, types):
     '''
-    Rather than using likelihood ratios, this function computes a “score” for each region based on the squared difference between its positive rate and the mean rate across all regions. It returns the region with the maximum score and the array of scores.
+    Rather than using likelihood ratios, this function computes a “score” for each region based on the squared difference
+    between its positive rate and the mean rate across all regions. It returns the region with the maximum score and the array of scores.
+    It appears to be the MeanVar auditing method.
     
     The purpose is to offer an alternative (partitioning-based) metric for detecting regions with anomalous rates.
     '''
