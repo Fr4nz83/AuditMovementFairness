@@ -1,1 +1,1 @@
-Placeholder for the datasets of synthetic trajectories generated with the Patterns of Life simulator.
+Placeholder for the datasets of synthetic trajectories generated with the Patterns of Life simulator. Please, generate datasets of syntetic trajectories with the simulator's version available in our fork: https://github.com/Fr4nz83/generate-mobility-dataset
