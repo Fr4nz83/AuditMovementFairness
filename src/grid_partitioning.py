@@ -64,6 +64,13 @@ class Grid() :
         self.grid = self.grid.to_crs(crs=self.orig_crs)
 
         return self.grid
+    
+
+    def get_grid(self) -> gpd.GeoDataFrame :
+        '''
+        Return a reference to the GeoDataFrame containing the grid cells.
+        '''
+        return self.grid
 
 
     def compute_grid_meters(self, bbox : tuple[float,float,float,float], step : float) -> gpd.GeoDataFrame :

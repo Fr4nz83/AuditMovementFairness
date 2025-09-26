@@ -16,7 +16,6 @@ class StopExplorer() :
                                           crs="EPSG:4326")
         del self.gdf_stops['lng'], self.gdf_stops['lat']
 
-
         # Enrich the original dataframe by extracting some temporal information.
         self._initial_enrichment()
 
