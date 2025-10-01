@@ -28,6 +28,7 @@ class StopExplorer() :
         self.gdf_stops['hour_start'] = self.gdf_stops['datetime'].dt.hour.astype(np.uint8)
         self.gdf_stops['hour_end'] = self.gdf_stops['leaving_datetime'].dt.hour.astype(np.uint8)
         self.gdf_stops['weekday'] = self.gdf_stops['datetime'].dt.weekday.astype(np.uint8)
+        self.gdf_stops['weekend'] = self.gdf_stops['weekday'].isin([5,6]).astype(np.uint8)
 
 
 
