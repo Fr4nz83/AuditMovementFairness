@@ -114,32 +114,6 @@ class Grid() :
         return gpd.GeoDataFrame.from_dict(list_cells).set_crs(crs=crs)
     
 
-    def compute_join_other_geodata(self, other_geo_df : gpd.GeoDataFrame) -> gpd.GeoDataFrame :
-        '''
-        Given another GeoDataFrame 'other_geo_df', compute a spatial join between it and the grid, returning
-        a new GeoDataFrame containing the cells of the grid that intersect at least one geometry in 'other_geo_df'.
-
-        Parameters
-        ----------
-        other_geo_df : gpd.GeoDataFrame
-            The other GeoDataFrame to be spatially joined with the grid.
-
-        Returns
-        -------
-        gpd.GeoDataFrame
-            The result of the spatial join.
-        '''
-
-        # Compute a spatial join between 'other_geo_df' and the cells of the grid.
-        join = gpd.sjoin(other_geo_df, self.grid, how='inner', predicate='intersects')
-        
-        # Rename and set the type of the column containing the index of the grid's cells.
-        join.rename(columns={'index_right':'cell_id'}, inplace=True)
-        join['cell_id'] = join['cell_id'].astype(np.uint32)
-
-        return join
-    
-
     def generate_grid_map(self):
 
         # Create a Folium Map object.
