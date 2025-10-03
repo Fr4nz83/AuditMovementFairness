@@ -1,6 +1,10 @@
 import pandas as pd
 import geopandas as gpd
 import numpy as np
+
+import folium
+import branca.colormap as cm
+
 from .grid_partitioning import Grid
 from .stop_explorer import StopExplorer
 
@@ -13,6 +17,8 @@ class StopGridMapper:
         """
         Initialize a StopGridMapper instance by mapping the stop segments of 'stop_explorer' to the cells of 'grid'.
         """
+
+        self.grid = grid
 
         # Compute a spatial join between 'other_geo_df' and the cells of the grid.
         self.join = gpd.sjoin(stop_explorer.get_df_stops(), grid.get_grid(), how='inner', predicate='intersects')
@@ -33,7 +39,7 @@ class StopGridMapper:
         return self.join
 
 
-    def compute_statistics_cells_users(self) -> pd.DataFrame :
+    def compute_statistics_cells_users(self) :
         '''
         Compute several statistics for each pair (user_id, cell_id).
         '''
@@ -48,7 +54,7 @@ class StopGridMapper:
                                 'mean_hour_end' : pd.NamedAgg(column='hour_end', aggfunc='mean'),
                                 'median_hour_end' : pd.NamedAgg(column='hour_end', aggfunc='median')}
         
-        agg_cell_uid = self.join.groupby(['uid', 'cell_id']).agg(**stats_pairs_cell_uid)
+        self.agg_cell_uid = self.join.groupby(['uid', 'cell_id']).agg(**stats_pairs_cell_uid)
 
 
         # For each pair (user_id, cell_id), compute the fraction of stops associated with the weekday and the weekend.
@@ -68,19 +74,77 @@ class StopGridMapper:
         # display(weekend_analysis)
 
         # Update 'agg_cell_uid' with the final information.
-        agg_cell_uid['frac_time_weekend'] = weekend_analysis
+        self.agg_cell_uid['frac_time_weekend'] = weekend_analysis
 
-        return agg_cell_uid
+        return self.agg_cell_uid
     
 
-    def compute_statistics_cells(self) -> pd.DataFrame :
+    def compute_statistics_cells(self) :
         '''
         Compute several statistics for each cell of the grid .
         '''
 
+        # Compute several stats of the grid's cells.
         stats_config = {'num_stops' : pd.NamedAgg(column='uid', aggfunc='size'),
                         'num_users' : pd.NamedAgg(column='uid', aggfunc='nunique'),
                         'mean_duration_mins' : pd.NamedAgg(column='duration_mins', aggfunc='mean'),
-                        'median_duration_mins' : pd.NamedAgg(column='duration_mins', aggfunc='median')}
+                        'median_duration_mins' : pd.NamedAgg(column='duration_mins', aggfunc='median')} 
+        stats_cells_grid = self.join.groupby('cell_id').agg(**stats_config)
+
+        # Create a GeoDataframe that represents the original GeoDataFrame of the grid, augmented with the statistics.
+        self.augmented_grid = self.grid.get_grid().join(stats_cells_grid, how='left').fillna(0)
+        return self.augmented_grid
+    
+
+    def generate_augmented_grid_heatmap(self, target_column : str, desc_target_column : str, dic_fields_tooltip : dict) -> folium.Map :
+        '''
+        Generate a heatmap of the grid, where each cell is colored according to the values in 'value_col'.
+        '''
+
+        gdf = self.augmented_grid
+
+
+        # Instantiate a Folium Map.
+        minx, miny, maxx, maxy = gdf.total_bounds
+        m = folium.Map(location=[(miny + maxy) / 2, (minx + maxx) / 2], 
+                       zoom_start=14, tiles="CartoDB positron", prefer_canvas = True)
+
+
+        # Define a colormap for the heatmap
+        vmin = float(gdf[target_column].min())
+        vmax = float(gdf[target_column].max())
+        if vmin == vmax:  # avoid degenerate scale
+            vmin, vmax = (0.0, vmin if vmax > 0 else 1.0)
+
+        cmap = cm.LinearColormap(
+            colors=["white", "red"],
+            vmin=vmin, vmax=vmax
+        )
+        cmap.caption = desc_target_column
+        cmap.add_to(m)
+
+
+        # Define the grid layer. Each grid's cell is filled according to the colormap defined below AND the # of users it contains.
+        folium.GeoJson(
+            data=gdf.to_json(),
+            style_function=lambda f: {
+                "fillColor": cmap(f["properties"][target_column]), # polygon fill color
+                "color": "black", # polygon border color
+                "weight": 0.5,    # polygon border color's weight
+                "fillOpacity": 0.7, # polygon fill color's opacity
+            },
+            tooltip=folium.GeoJsonTooltip(
+                fields = list(dic_fields_tooltip.keys()),
+                aliases = list(dic_fields_tooltip.values()),
+                localize=True
+            ),
+            name=f"Grid heatmap (by # of {target_column})"
+        ).add_to(m)
+
+        # Add a layer control to the map (to be able to turn on/off the grid layer).
+        folium.LayerControl().add_to(m)
+
+        # Instruct the map to tightly fit the render's zoom on the dataset bounds
+        m.fit_bounds([[miny, minx], [maxy, maxx]], padding=(30, 30))
         
-        return self.join.groupby('cell_id').agg(**stats_config)
+        return m

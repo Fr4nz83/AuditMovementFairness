@@ -42,57 +42,9 @@ class Grid() :
         # Reproject the bounding box's coords from the original CRS to a metric CRS.
         tr = Transformer.from_crs(orig_crs, dest_crs, always_xy=True)
         return tr.transform_bounds(*bbox)
-
-
-
-    ### PUBLIC METHODS ###
-
-    def compute_grid_over_geodata(self, geo_df : gpd.GeoDataFrame) -> gpd.GeoDataFrame :
-        
-        # Compute the bounding box of the objects in the geodataframe
-        bbox = geo_df.total_bounds  # return a tuple having the form '(minx, miny, maxx, maxy)'
-        self.orig_crs = geo_df.crs # Get the original CRS of the geodataframe.
-        metric_crs = geo_df.estimate_utm_crs() # Estimate a metric CRS we can use for the area covered by the geodataframe.
-
-        # Reproject the bounding box's coords from the original CRS to a metric CRS.
-        bbox_metric = self._project_bounds_from_to_crs(self.orig_crs, metric_crs, bbox)
-
-        # Compute a uniform grid with side 'self.cell_length_meters' over the bounding box.
-        self.grid = self.compute_grid_meters(bbox_metric, self.cell_length_meters).set_crs(crs=metric_crs)
-
-        # Reproject the grid to the original CRS.
-        self.grid = self.grid.to_crs(crs=self.orig_crs)
-
-        return self.grid
     
 
-    def get_grid(self) -> gpd.GeoDataFrame :
-        '''
-        Return a reference to the GeoDataFrame containing the grid cells.
-        '''
-        return self.grid
-
-
-    def compute_grid_meters(self, bbox : tuple[float,float,float,float], step : float) -> gpd.GeoDataFrame :
-        
-        min_lon, min_lat, max_lon, max_lat = bbox[0], bbox[1], bbox[2], bbox[3]
-        
-        list_cells = []
-        for curr_lon in np.arange(min_lon, max_lon, step):
-            next_lon = min(curr_lon + step, max_lon)
-            for curr_lat in np.arange(min_lat, max_lat, step):
-                next_lat = min(curr_lat + step, max_lat)
-                
-                # build shapely box
-                geom = box(curr_lon, curr_lat, next_lon, next_lat)
-                # record bounds + geometry
-                list_cells.append({"geometry": geom})
-
-        # Create a final GeoDataFrame holding the grid cells.
-        return gpd.GeoDataFrame.from_dict(list_cells)
-    
-
-    def compute_grid_step(self, bbox : tuple[float,float,float,float], divisions : int, crs : str) -> gpd.GeoDataFrame :
+    def _compute_grid_step(self, bbox : tuple[float,float,float,float], divisions : int, crs : str) -> gpd.GeoDataFrame :
         
         min_lon, min_lat, max_lon, max_lat = bbox[0], bbox[1], bbox[2], bbox[3]
         
@@ -114,7 +66,65 @@ class Grid() :
         return gpd.GeoDataFrame.from_dict(list_cells).set_crs(crs=crs)
     
 
+    def _compute_grid_meters(self, bbox : tuple[float,float,float,float], step : float) -> gpd.GeoDataFrame :
+        
+        min_lon, min_lat, max_lon, max_lat = bbox[0], bbox[1], bbox[2], bbox[3]
+        
+        list_cells = []
+        for curr_lon in np.arange(min_lon, max_lon, step):
+            next_lon = min(curr_lon + step, max_lon)
+            for curr_lat in np.arange(min_lat, max_lat, step):
+                next_lat = min(curr_lat + step, max_lat)
+                
+                # build shapely box
+                geom = box(curr_lon, curr_lat, next_lon, next_lat)
+                # record bounds + geometry
+                list_cells.append({"geometry": geom})
+
+        # Create a final GeoDataFrame holding the grid cells.
+        return gpd.GeoDataFrame.from_dict(list_cells)
+
+
+
+    ### PUBLIC METHODS ###
+
+    def compute_grid_over_geodata(self, geo_df : gpd.GeoDataFrame) -> gpd.GeoDataFrame :
+        
+        # Compute the bounding box of the objects in the geodataframe
+        bbox = geo_df.total_bounds  # return a tuple having the form '(minx, miny, maxx, maxy)'
+        self.orig_crs = geo_df.crs # Get the original CRS of the geodataframe.
+        metric_crs = geo_df.estimate_utm_crs() # Estimate a metric CRS we can use for the area covered by the geodataframe.
+
+        # Reproject the bounding box's coords from the original CRS to a metric CRS.
+        bbox_metric = self._project_bounds_from_to_crs(self.orig_crs, metric_crs, bbox)
+
+        # Compute a uniform grid with side 'self.cell_length_meters' over the bounding box.
+        self.grid = self._compute_grid_meters(bbox_metric, self.cell_length_meters).set_crs(crs=metric_crs)
+
+        # Reproject the grid to the original CRS.
+        self.grid = self.grid.to_crs(crs=self.orig_crs)
+
+        return self.grid
+    
+
+    def get_grid(self) -> gpd.GeoDataFrame :
+        '''
+        Return a reference to the GeoDataFrame containing the grid cells.
+        '''
+        return self.grid
+    
+
+    def get_grid_cell_length_meters(self) -> float :
+        '''
+        Return the length of the grid's cells' side, in meters.
+        '''
+        return self.cell_length_meters
+    
+
     def generate_grid_map(self):
+        '''
+        Generate a simple Folium map showing the grid's cells.
+        '''
 
         # Create a Folium Map object.
         bbox = self.grid.total_bounds
