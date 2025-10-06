@@ -119,7 +119,8 @@ class StopGridMapper:
         # and grid cells, augmented with several statistics associated with them.
         stats_pairs_cell_uid = {'num_stops' : pd.NamedAgg(column='uid', aggfunc='size'),
                                 'mean_duration_mins' : pd.NamedAgg(column='duration_mins', aggfunc='mean'),
-                                'median_duration_mins' : pd.NamedAgg(column='duration_mins', aggfunc='median')}
+                                'median_duration_mins' : pd.NamedAgg(column='duration_mins', aggfunc='median'),
+                                'total_duration_mins' : pd.NamedAgg(column='duration_mins', aggfunc='sum')}
         
         self.agg_cell_uid = self.join.groupby(['uid', 'cell_id']).agg(**stats_pairs_cell_uid)
 
