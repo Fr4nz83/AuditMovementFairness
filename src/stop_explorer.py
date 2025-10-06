@@ -16,19 +16,9 @@ class StopExplorer() :
                                           crs="EPSG:4326")
         del self.gdf_stops['lng'], self.gdf_stops['lat']
 
-        # Enrich the original dataframe by extracting some temporal information.
-        self._initial_enrichment()
-
 
 
     ### PROTECTED METHODS ###
-
-    def _initial_enrichment(self) :
-        # Enrich the original dataframe by extracting some temporal information.
-        self.gdf_stops['hour_start'] = self.gdf_stops['datetime'].dt.hour.astype(np.uint8)
-        self.gdf_stops['hour_end'] = self.gdf_stops['leaving_datetime'].dt.hour.astype(np.uint8)
-        self.gdf_stops['weekday'] = self.gdf_stops['datetime'].dt.weekday.astype(np.uint8)
-        self.gdf_stops['weekend'] = self.gdf_stops['weekday'].isin([5,6]).astype(np.uint8)
 
 
 
@@ -46,12 +36,4 @@ class StopExplorer() :
         '''
 
         return self.gdf_stops.loc[self.gdf_stops['uid'] == user_id]
-
-    def get_stops_temporal_intervals_freqs(self) -> pd.DataFrame  :
-        ''' 
-        Return a dataframe containing the frequency of all the (hour_start, hour_stop) intervals that
-        have been found associated with the stop segments.
-        '''
-        
-        return self.gdf_stops[['hour_start','hour_end']].value_counts(normalize = True)
         
