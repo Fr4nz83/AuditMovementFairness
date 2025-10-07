@@ -137,4 +137,3 @@ class Grid() :
 
         # 5. Display or save
         return m
-        # m.save("trajectory_time_slider.html")

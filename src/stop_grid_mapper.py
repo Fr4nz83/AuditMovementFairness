@@ -122,20 +122,20 @@ class StopGridMapper:
                                 'median_duration_mins' : pd.NamedAgg(column='duration_mins', aggfunc='median'),
                                 'total_duration_mins' : pd.NamedAgg(column='duration_mins', aggfunc='sum')}
         
-        self.agg_cell_uid = self.join.groupby(['uid', 'cell_id']).agg(**stats_pairs_cell_uid)
+        agg_cell_uid = self.join.groupby(['uid', 'cell_id']).agg(**stats_pairs_cell_uid)
 
 
         ### Further augmentations ... ###
 
         # For each pair (user_id, cell_id), compute the fraction of stops associated with the weekday and the weekend.
         # Update 'agg_cell_uid' with this information.
-        self.agg_cell_uid['frac_time_weekend'] = self._compute_weekend_info()
+        agg_cell_uid['frac_time_weekend'] = self._compute_weekend_info()
 
         # For each pair (user_id, cell_id) for which we have at least a stop segment, compute the number of distinct days
         # 'user_id' has at least a stop segment in 'cell_id'.
-        self.agg_cell_uid['days_spanned'] = self._compute_user_cell_days_span()
+        agg_cell_uid['days_spanned'] = self._compute_user_cell_days_span()
 
-        return self.agg_cell_uid
+        return agg_cell_uid
     
 
     def compute_statistics_cells(self) :
@@ -151,8 +151,25 @@ class StopGridMapper:
         stats_cells_grid = self.join.groupby('cell_id').agg(**stats_config)
 
         # Create a GeoDataframe that represents the original GeoDataFrame of the grid, augmented with the statistics.
-        self.augmented_grid = self.grid.get_grid().join(stats_cells_grid, how='left').fillna(0)
-        return self.augmented_grid
+        augmented_grid = self.grid.get_grid().join(stats_cells_grid, how='left').fillna(0)
+        return augmented_grid
+    
+
+    def associate_cells_to_users(self, top_k_cells_user : int) -> pd.Series :
+        '''
+        For each user, select the top-k cells in which they have stop segments. The ranking is done according to
+        the number of distinct days the user's stops span in each cell.
+        '''
+        
+        # For each user, select the 'top-max_num_cells' cells in which they have stops.
+        stats_uid_cell = self.compute_statistics_cells_users()
+        final_mapping_user_cells = (stats_uid_cell.sort_values(by=['uid', 'days_spanned'], ascending=False) # For each user, sort their cells according to the distinct days spanned by the user's stops.
+                                    .groupby('uid')
+                                    .head(top_k_cells_user)
+                                    .reset_index(level='cell_id')
+                                    .loc[:, 'cell_id'])
+        
+        return final_mapping_user_cells
     
 
     def generate_augmented_grid_heatmap(self, target_column : str, desc_target_column : str, dic_fields_tooltip : dict) -> folium.Map :
@@ -160,18 +177,18 @@ class StopGridMapper:
         Generate a heatmap of the grid, where each cell is colored according to the values in 'value_col'.
         '''
 
-        gdf = self.augmented_grid
+        augmented_grid = self.compute_statistics_cells()
 
 
         # Instantiate a Folium Map.
-        minx, miny, maxx, maxy = gdf.total_bounds
+        minx, miny, maxx, maxy = augmented_grid.total_bounds
         m = folium.Map(location=[(miny + maxy) / 2, (minx + maxx) / 2], 
                        zoom_start=14, tiles="CartoDB positron", prefer_canvas = True)
 
 
         # Define a colormap for the heatmap
-        vmin = float(gdf[target_column].min())
-        vmax = float(gdf[target_column].max())
+        vmin = float(augmented_grid[target_column].min())
+        vmax = float(augmented_grid[target_column].max())
         if vmin == vmax:  # avoid degenerate scale
             vmin, vmax = (0.0, vmin if vmax > 0 else 1.0)
 
@@ -185,7 +202,7 @@ class StopGridMapper:
 
         # Define the grid layer. Each grid's cell is filled according to the colormap defined below AND the # of users it contains.
         folium.GeoJson(
-            data=gdf.to_json(),
+            data=augmented_grid.to_json(),
             style_function=lambda f: {
                 "fillColor": cmap(f["properties"][target_column]), # polygon fill color
                 "color": "black", # polygon border color
