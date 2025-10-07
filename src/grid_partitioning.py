@@ -2,6 +2,7 @@ import pandas as pd
 import geopandas as gpd
 import numpy as np
 import folium
+import pickle
 
 from shapely.geometry import box
 from pyproj import Transformer
@@ -12,6 +13,11 @@ class Grid() :
     ### CLASS CONSTRUCTOR ###
 
     def __init__(self, grid_cell_length_meters : float) :
+        '''
+        Initialize a Grid instance, with cells of side 'grid_cell_length_meters' (in meters).
+        The actual grid will be materialized when calling the 'compute_grid_over_geodata' method, i.e., when
+        we have set of geographical objects from which we can derive the enclosing bounding box. 
+        '''
 
         self.cell_length_meters = grid_cell_length_meters
 
@@ -92,17 +98,17 @@ class Grid() :
         
         # Compute the bounding box of the objects in the geodataframe
         bbox = geo_df.total_bounds  # return a tuple having the form '(minx, miny, maxx, maxy)'
-        self.orig_crs = geo_df.crs # Get the original CRS of the geodataframe.
+        orig_crs = geo_df.crs # Get the original CRS of the geodataframe.
         metric_crs = geo_df.estimate_utm_crs() # Estimate a metric CRS we can use for the area covered by the geodataframe.
 
         # Reproject the bounding box's coords from the original CRS to a metric CRS.
-        bbox_metric = self._project_bounds_from_to_crs(self.orig_crs, metric_crs, bbox)
+        bbox_metric = self._project_bounds_from_to_crs(orig_crs, metric_crs, bbox)
 
         # Compute a uniform grid with side 'self.cell_length_meters' over the bounding box.
         self.grid = self._compute_grid_meters(bbox_metric, self.cell_length_meters).set_crs(crs=metric_crs)
 
         # Reproject the grid to the original CRS.
-        self.grid = self.grid.to_crs(crs=self.orig_crs)
+        self.grid = self.grid.to_crs(crs=orig_crs)
 
         return self.grid
     
@@ -119,6 +125,27 @@ class Grid() :
         Return the length of the grid's cells' side, in meters.
         '''
         return self.cell_length_meters
+    
+
+    def save_to_file(self, filepath : str) -> None :
+        '''
+        Save the Grid instance to a file, using pickle serialization.
+        The file will be created at the path specified by 'filepath'.
+        '''
+
+        with open(filepath, "wb") as f:
+            pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+
+    @classmethod
+    def load_from_pickle(cls, filepath : str) -> 'Grid' :
+        '''
+        Alternative class constructor: load a Grid instance from a file, using pickle serialization.
+        The file must be located at the path specified by 'filepath'.
+        '''
+
+        with open(filepath, "rb") as f:
+            return pickle.load(f)
     
 
     def generate_grid_map(self):

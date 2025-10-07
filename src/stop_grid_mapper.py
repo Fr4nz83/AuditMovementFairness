@@ -151,7 +151,9 @@ class StopGridMapper:
         stats_cells_grid = self.join.groupby('cell_id').agg(**stats_config)
 
         # Create a GeoDataframe that represents the original GeoDataFrame of the grid, augmented with the statistics.
-        augmented_grid = self.grid.get_grid().join(stats_cells_grid, how='left').fillna(0)
+        augmented_grid = (self.grid.get_grid()
+                          .join(stats_cells_grid, how='left')
+                          .fillna(0))
         return augmented_grid
     
 
