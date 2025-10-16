@@ -122,7 +122,7 @@ class CandidateGenerationClassification() :
         # 4 - Finally, determine which combinations of cells have a local positive rate that differs more than an
         # "eps_diff" threshold from the global one.
         combs_cells_tocheck = res_intersections[abs(res_intersections['positive_rate'] - self.global_positive_rate) > eps_threshold]
-        print(f"Combinations of cells to test: {combs_cells_tocheck}")
+        # print(f"Combinations of cells to statistically test: {combs_cells_tocheck}")
 
 
         # 5 - Return the combinations in the form of list.
@@ -133,14 +133,13 @@ class CandidateGenerationClassification() :
         
         # Find out the cardinality of the combinations of cells contained in res_intersections
         dim_itemset = res_intersections.index.nlevels
-        print(f"dim_itemset: {dim_itemset}")
+        # print(f"dim_itemset: {dim_itemset}")
 
 
         intersections = {}
-
         # Base case: the combinations of cells in 'res_intersections' are actually single cells.
         if dim_itemset == 1 :
-            print("Managing the case in which we are generating candidates from single cells.")
+            # print("Managing the case in which we are generating candidates from single cells.")
             
             pairs = zip(res_intersections.index, res_intersections['list_users'])
             for (cell_id, list_users), (other_cell_id, other_list_users) in combinations(pairs, 2):
@@ -155,7 +154,7 @@ class CandidateGenerationClassification() :
 
         # Case in which the combinations of cells in 'res_intersections' have size 'dim_itemset' > 1.
         else :
-            print("Managing the case in which we are generating candidates from combinations of cells.")
+            # print("Managing the case in which we are generating candidates from combinations of cells.")
 
             base_lvls = list(range(dim_itemset - 1)) if dim_itemset > 2 else 0
             print(f"base_lvls: {base_lvls}")
@@ -166,22 +165,21 @@ class CandidateGenerationClassification() :
 
                 # Drop the first 'n-1' levels in the multi-index, leaving only the last one.
                 s = sub.droplevel(base_lvls)
-                print(f"Series associated with the group {keys}: {s}")
+                # print(f"Series associated with the group {keys}: {s}")
                 
 
                 # Generate all the possible tuples of length 'n+1' by keeping fixed the first "n-1" keys and 
                 # consider all the possible combinations of length 2 that can be generated in the last level of the
                 # multi-index.
-                #
-                # TODO: try to optimize with the 'pairs' trick, instead of accessing the series 's' with 'a' and 'b'.
-                for a, b in combinations(s.index, 2):
+                pairs = zip(s.index, s.values)
+                for (cell_id, list_users), (other_cell_id, other_list_users) in combinations(pairs, 2):
+                    
                     # Compute the set intersection, and its cardinality.
-                    intersection = s[a] & s[b]
-                    cnt = len(intersection)
+                    intersection = list_users & other_list_users
 
                     # Add to the dictionary only the cell pairs that have at least 'threshold' users in common.
                     # The threshold should be calculated according to the statistical power we want to have in the hypotesis tests.
-                    if len(intersection) > cnt_threshold : intersections[(*keys, a, b)] = intersection
+                    if len(intersection) > cnt_threshold : intersections[(*keys, cell_id, other_cell_id)] = intersection
 
 
         # Finally, output the results in the appropriate format. 
@@ -199,40 +197,44 @@ class CandidateGenerationClassification() :
     
     def candidate_generation(self, cnt_threshold : int, eps_threshold : float) -> list[tuple] :
 
-        # Create an augmented grid: this will be the starting point of the generation of subset of cells
-        # to be statistically tested for movement fairness.
+        # 1 - Create an augmented grid: this is the candidate generation starting point.
         augmented_grid = self._create_augmented_grid()
         # print(f"Augmented grid df: {augmented_grid}")
 
         
-        ### Candidate generation and selection phase ###
+        ### CANDIDATE FILTERING AND GENERATION ###
 
-        # 1 - Set up 'res_intersections', i.e., the dataframe that will be used to progressively generate the candidates.
+        # 2 - Set up the initial state of 'res_intersections', i.e., the dataframe that will be used to
+        # progressively generate the subsets of cells candidated to be statistically checked. It initially
+        # contains candidates of size 1 cell.
         res_intersections = augmented_grid.copy(deep = True)
         res_intersections['num_users'] = res_intersections['list_users'].apply(len)
-        print(f"Initial state of res_intersection df: {res_intersections}")
+        # print(f"Initial state of res_intersection df: {res_intersections}")
+        res_intersections = res_intersections[res_intersections['num_users'] >= cnt_threshold] # Eliminate the cells with < 'cnt_threshold' users.
 
-        # 1.1 - Eliminate the cells that have less than 'cnt_threshold' users.
-        res_intersections = res_intersections[res_intersections['num_users'] >= cnt_threshold]
-
-        
+        # 3 - Check and generation loop.
         list_candidates_test = []
-        level = 1
-        # TODO: BEGIN do-while ...
+        l = 1
         while True :
             # 1 - Check which candidates need to undergo statistical test...
+            print(f"Evaluating which candidates of size '{l} cells' need to be statistically checked")
             list_level_candidates = self._check_candidates_stat(res_intersections, eps_threshold)
             list_candidates_test.extend(list_level_candidates)
-            print(f"Number of candidates of size {l} added to the list: {len(list_level_candidates)}")
+            print(f"Number of candidates of size {l} added to the check list: {len(list_level_candidates)}")
 
             # 2 - Generate the set of candidates for the next level...
             print(f"Generating candidates of size {l+1}...")
             res_intersections = self._gen_candidates_level(res_intersections, cnt_threshold)
-            print(res_intersections)
+            # print(f"Candidates generated: {res_intersections}")
+            print(f"Number of candidates generated: {len(res_intersections)}")
 
             # 3 - Check if we haven't generate more candidates: if so, exit the loop.
             if len(res_intersections) == 0 : 
-                print("Exiting the candidate generation loop!")
+                print("No more candidates generated; exiting the candidate generation loop!")
                 break
 
             l += 1
+
+
+        print(f"Total number of subsets of cells to statistically check: {len(list_candidates_test)}")
+        return list_candidates_test
