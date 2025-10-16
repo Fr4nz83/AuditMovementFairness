@@ -184,7 +184,19 @@ class CandidateGenerationClassification() :
 
         # Finally, output the results in the appropriate format. 
         return pd.Series(data = intersections, name='list_users').to_frame()
+    
 
+    def _restore_mapping_indices_cells(self, series : pd.Series) -> pd.Series :
+        
+        # Invert the mapping using to eliminate any gap in the original cell indexes.
+        # # It will be used to restore the original cell IDs. 
+        tmp = pd.Series(index = self.remapped_indices_cells.values, data = self.remapped_indices_cells.index)
+
+        # Now restore the original cell IDs in the tuples within 'df'.
+        return (series.explode()
+                      .map(tmp)
+                      .groupby(level=0, sort=False)
+                      .agg(tuple))
 
 
     ### PUBLIC METHODS ###
@@ -212,6 +224,7 @@ class CandidateGenerationClassification() :
         # print(f"Initial state of res_intersection df: {res_intersections}")
         res_intersections = res_intersections[res_intersections['num_users'] >= cnt_threshold] # Eliminate the cells with < 'cnt_threshold' users.
 
+
         # 3 - Check and generation loop.
         list_candidates_test = []
         l = 1
@@ -220,21 +233,24 @@ class CandidateGenerationClassification() :
             print(f"Evaluating which candidates of size '{l} cells' need to be statistically checked")
             list_level_candidates = self._check_candidates_stat(res_intersections, eps_threshold)
             list_candidates_test.extend(list_level_candidates)
-            print(f"Number of candidates of size {l} added to the check list: {len(list_level_candidates)}")
+            print(f"Number of viable candidates of size '{l} cells' added to the check list: {len(list_level_candidates)}")
+            del list_level_candidates
 
             # 2 - Generate the set of candidates for the next level...
-            print(f"Generating candidates of size {l+1}...")
+            print(f"Generating candidates of size '{l+1} cells' from viable candidates of size '{l} cells'...")
             res_intersections = self._gen_candidates_level(res_intersections, cnt_threshold)
             # print(f"Candidates generated: {res_intersections}")
-            print(f"Number of candidates generated: {len(res_intersections)}")
+            print(f"Number of candidates with a sufficient # of users found: {len(res_intersections)}")
 
             # 3 - Check if we haven't generate more candidates: if so, exit the loop.
             if len(res_intersections) == 0 : 
-                print("No more candidates generated; exiting the candidate generation loop!")
+                print("No more viable candidates generated; exiting the candidate generation loop!")
                 break
 
             l += 1
 
+        print(f"Total number of viable candidates that needs statistical check: {len(list_candidates_test)}")
 
-        print(f"Total number of subsets of cells to statistically check: {len(list_candidates_test)}")
-        return list_candidates_test
+        # Now, store the set of candidates in a Series, restore the original cell IDs in the tuples, and finally
+        # return the final Series.
+        return self._restore_mapping_indices_cells(pd.Series(list_candidates_test))

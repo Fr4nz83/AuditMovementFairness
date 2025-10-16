@@ -44,7 +44,7 @@ class Grid() :
         tuple[float,float,float,float]
             The reprojected bounding box, in the form (minx, miny, maxx, maxy).
         '''
-
+        
         # Reproject the bounding box's coords from the original CRS to a metric CRS.
         tr = Transformer.from_crs(orig_crs, dest_crs, always_xy=True)
         return tr.transform_bounds(*bbox)
