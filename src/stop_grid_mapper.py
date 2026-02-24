@@ -1,7 +1,9 @@
 import pandas as pd
 import geopandas as gpd
 import numpy as np
+import gc
 
+from joblib import Parallel, delayed
 import folium
 import branca.colormap as cm
 
@@ -13,15 +15,15 @@ class StopGridMapper:
 
     ### PUBLIC CLASS CONSTRUCTOR ###
 
-    def __init__(self, grid : Grid, stop_explorer : StopExplorer):
+    def __init__(self, grid : Grid, df_stops : pd.DataFrame):
         """
-        Initialize a StopGridMapper instance by mapping the stop segments of 'stop_explorer' to the cells of 'grid'.
+        Initialize a StopGridMapper instance by mapping the stop segments in 'df_stops' to the cells of 'grid'.
         """
 
-        self.grid = grid
+        self.grid = grid.get_df_grid().copy()
 
         # Compute a spatial join between 'other_geo_df' and the cells of the grid.
-        self.join = gpd.sjoin(stop_explorer.get_df_stops(), grid.get_grid(), how='inner', predicate='intersects')
+        self.join = gpd.sjoin(df_stops, self.grid, how='inner', predicate='intersects')
         
         # Rename and set the type of the column containing the index of the grid's cells.
         self.join.rename(columns={'index_right':'cell_id'}, inplace=True)
@@ -151,9 +153,7 @@ class StopGridMapper:
         stats_cells_grid = self.join.groupby('cell_id').agg(**stats_config)
 
         # Create a GeoDataframe that represents the original GeoDataFrame of the grid, augmented with the statistics.
-        augmented_grid = (self.grid.get_grid()
-                          .join(stats_cells_grid, how='left')
-                          .fillna(0))
+        augmented_grid = (self.grid.join(stats_cells_grid, how='left').fillna(0))
         return augmented_grid
     
 
@@ -226,3 +226,59 @@ class StopGridMapper:
         m.fit_bounds([[miny, minx], [maxy, maxx]], padding=(30, 30))
         
         return m
+
+
+def parallel_user_to_cells_mapping(set_grids : dict, stops_df : pd.DataFrame, path_output : str,
+                                   top_k_cells_user : int, num_proc : int = 1) -> None :
+    '''
+    Parallelize the association of users to cells for multiple grids.
+
+    Parameters
+    ----------
+    set_grids : dict
+        A dictionary mapping each pair (cell_length, offset) to the corresponding grid.
+    stops_df : pd.DataFrame
+        A dataframe containing the stop segments.
+    path_output : str
+        The path where the output files (the mappings between users and cells for each grid) will be saved.
+    top_k_cells_user : int
+        The maximum number of top cells to be associated with each user for each grid.
+    num_proc : int, optional
+        The number of processes to use for parallelization. Default is 1 (no parallelization
+    '''
+
+    ### HELPER FUNCTIONS ###
+
+    def split_into_chunks(items, p):
+        """Split a list into at most p contiguous chunks."""
+        n = len(items)
+        if n == 0:
+            return []
+        p = max(1, min(p, n))  # avoid empty chunks when p > n
+        chunk_size = (n + p - 1) // p  # ceil(n / p)
+        return [items[i:i + chunk_size] for i in range(0, n, chunk_size)]
+
+
+    def process_grid_chunk(chunk, stops_df, top_k_cells_user):
+        """Process one chunk of (key, grid) pairs and return a partial dict."""
+        for (l, o), grid in chunk:
+            # print(f"Processing grid with cell length {l} and offset {o}")
+            stop_grid_mapper = StopGridMapper(grid, stops_df)
+            
+            final_mapping_user_cells = stop_grid_mapper.associate_cells_to_users(top_k_cells_user)
+            final_mapping_user_cells.to_pickle(path_output + f'mapping_user_cells_grid_{int(l)}_{int(o)}.pkl')
+            
+            del stop_grid_mapper, final_mapping_user_cells
+            gc.collect()  # test only; not always necessary
+
+
+
+    ### Parallel execution ###
+
+    items = list(set_grids.items())              # [((l,o), grid), ...]
+    chunks = split_into_chunks(items, num_proc)  # partition into p chunks (or fewer if not enough items)
+
+    Parallel(n_jobs=num_proc, backend="loky")(
+        delayed(process_grid_chunk)(chunk, stops_df, top_k_cells_user)
+        for chunk in chunks
+    )
