@@ -140,4 +140,10 @@ class CandidateGeneration() :
 
 
         # Return a single dataframe containing the candidates computed at the various levels of the generation process.
-        return pd.concat(list_candidates_test)
+        list_candidates_test = pd.concat(list_candidates_test)
+        
+        # Turn the sets into the 'list_users' column into numpy arrays, so to further speed up the use of np.take()
+        # during the Monte Carlo computations in the subsequent steps of our approach.
+        list_candidates_test['list_users'] = list_candidates_test['list_users'].apply(lambda s: np.array(list(s)))
+
+        return list_candidates_test
