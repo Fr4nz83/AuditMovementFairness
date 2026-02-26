@@ -144,6 +144,7 @@ class CandidateGeneration() :
         
         # Turn the sets into the 'list_users' column into numpy arrays, so to further speed up the use of np.take()
         # during the Monte Carlo computations in the subsequent steps of our approach.
-        list_candidates_test['list_users'] = list_candidates_test['list_users'].apply(lambda s: np.array(list(s)))
+        # Also, enforce the use of unsigned 32-bit integers to reduce the memory footprint.
+        list_candidates_test['list_users'] = list_candidates_test['list_users'].apply(lambda s: np.array(list(s), dtype=np.uint32))
 
         return list_candidates_test
