@@ -13,7 +13,7 @@ class BernoulliSpatialScan:
 
     ### PROTECTED METHODS ###
 
-    def _batch_max_likelihood_ratio(labels_objects: np.ndarray, 
+    def _batch_max_likelihood_ratio(self, labels_objects: np.ndarray, 
                                     flat_ids: np.ndarray, indptr: np.ndarray, lenghts: np.ndarray,
                                     tot_sum_labels: int,
                                     logL0_max: float) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
@@ -87,25 +87,15 @@ class BernoulliSpatialScan:
     ### PUBLIC CLASS CONSTRUCTOR ###
 
     def __init__(self,
-                 path_candidates : str,
-                 num_simulations: int = 500, alpha: float = 0.05) :
+                 num_simulations: int, alpha: float,
+                 flat_ids : np.ndarray, indptr : np.ndarray, lengths : np.ndarray) :
         
         # Set some parameters for the Bernoulli-based spatial scan statistic
         self.num_simulations = int(num_simulations)
         self.alpha = float(alpha)
-    
 
-        # Read the flattened candidates.
-        with open(path_candidates, "rb") as f:
-            data = pickle.load(f)
-
-        ### Load the dictory containing the flattened objects ID lists associated with the candidates ###
-        self.flat_ids, self.indptr, self.lenghts = data['flat_ids'], data['start_pos'], data['lengths']
-        del data
-        # Ensure the big arrays are contiguous (helps joblib's memmap efficiency)
-        self.flat_ids = np.ascontiguousarray(self.flat_ids)
-        self.indptr   = np.ascontiguousarray(self.indptr)
-        self.lenghts  = np.ascontiguousarray(self.lenghts)
+        ### Store the references to the data structures holding the flattened objects ID lists associated with the candidates ###
+        self.flat_ids, self.indptr, self.lengths = flat_ids, indptr, lengths
         
 
         # Perform some sanity checks.
@@ -123,7 +113,7 @@ class BernoulliSpatialScan:
             raise ValueError("All candidates must have at least one object")
 
 
-    def sequential_simulations(self, labels : np.ndarray) -> bool :
+    def sequential_simulations(self, labels : np.ndarray) -> tuple[bool, np.ndarray, np.float32] :
         ### SEQUENTIAL VERSION ###
 
         # 1 - Compute the L_0 likelihood, which models the likelihood of observing the labels in the data under the the assumption that the 
@@ -147,19 +137,22 @@ class BernoulliSpatialScan:
 
             # For the objects associated with each subset of cells, compute their positive rate vs that of the other objects.
             _, _, _, vec_max_LR[i] = self._batch_max_likelihood_ratio(shuffled_labels,
-                                                                      self.flat_ids, self.indptr, self.lenghts,
+                                                                      self.flat_ids, self.indptr, self.lengths,
                                                                       P, logL0_max)
             
 
         # 3 - Compute the max log likelihood ratio from the candidates when considering the original labels.
         _, _, _, max_LR_dataset = self._batch_max_likelihood_ratio(labels,
-                                                                   self.flat_ids, self.indptr, self.lenghts,
+                                                                   self.flat_ids, self.indptr, self.lengths,
                                                                    P, logL0_max)
 
 
 
         # 4 - Determine if we have to reject H_0 or not.
-        return self._reject_H0(vec_max_LR, max_LR_dataset)
+        reject = self._reject_H0(vec_max_LR, max_LR_dataset)
+
+
+        return reject, vec_max_LR, max_LR_dataset
 
 
     def parallel_simulations(self, labels : np.ndarray) :
@@ -186,16 +179,50 @@ class BernoulliSpatialScan:
                               backend="loky",
                               verbose=10,
                               #max_nbytes="1M",   # threshold that triggers auto-memmapping
-                              mmap_mode="r")(delayed(one_simulation)(i, labels, self.flat_ids, self.indptr, self.lenghts, P, logL0_max) for i in range(self.num_simulations))
+                              mmap_mode="r")(delayed(one_simulation)(i, labels, self.flat_ids, self.indptr, self.lengths, P, logL0_max) for i in range(self.num_simulations))
         vec_max_LR = np.asarray(vec_max_LR, dtype=np.float32)
                 
 
         # 3 - Compute the max log likelihood ratio from the candidates when considering the original labels.
         _, _, _, max_LR_dataset = self._batch_max_likelihood_ratio(labels,
-                                                                self.flat_ids, self.indptr, self.lenghts,
-                                                                P, logL0_max)
+                                                                   self.flat_ids, self.indptr, self.lengths,
+                                                                   P, logL0_max)
 
 
 
         # 4 - Determine if we have to reject H_0 or not.
-        return self._reject_H0(vec_max_LR, max_LR_dataset)
+        reject = self._reject_H0(vec_max_LR, max_LR_dataset)
+
+
+        return reject, vec_max_LR, max_LR_dataset
+    
+
+
+    ### PUBLIC STATIC METHODS
+
+    @staticmethod
+    def load_flattened_candidates(path_dict_candidates : str) :
+        '''
+        Helper function that loads the flattened candidates (plus aux information); it also
+        performs some sanity checks.
+        '''
+        
+        with open(path_dict_candidates, "rb") as f:
+            data = pickle.load(f)
+
+        ### Load the dictory containing the flattened objects ID lists associated with the candidates ###
+        flat_ids, indptr, lenghts = data['flat_ids'], data['start_pos'], data['lengths']
+        del data
+
+        # Ensure the big arrays are contiguous (helps memmap efficiency)
+        flat_ids = np.ascontiguousarray(flat_ids)
+        indptr   = np.ascontiguousarray(indptr)
+        lenghts  = np.ascontiguousarray(lenghts)
+
+
+        # SANITY CHECK: check that there is no candidate with 0 associated objects. 
+        # It shouldn't happen, but we do a quick check.
+        assert np.all(lenghts == np.diff(indptr)), "lenghts/indptr mismatch (or empty segments present)"
+        assert np.all(lenghts > 0), "Candidates with zero associated objects detected, should not happen!"
+
+        return flat_ids, indptr, lenghts
