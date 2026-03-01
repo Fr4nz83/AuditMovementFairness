@@ -1,9 +1,153 @@
 import numpy as np
 import pickle
+import math
 
-from joblib import Parallel, delayed
-from scipy.special import xlog1py, xlogy
 from tqdm import tqdm
+import numba as nb
+
+
+### NUMBA FUNCTIONS ###
+
+@nb.njit(cache=True, nogil=True)
+def max_loglr_streaming(is_simulation : bool,
+                        labels : np.ndarray, 
+                        flat_ids : np.ndarray, indptr : np.ndarray, lengths : np.ndarray, 
+                        P : np.uint32, logL0_max : np.float32):
+    """
+    'Numbized' computation of the log-likelihood ratios of candidate subsets of cells, associated with some set of grids.
+    For each candidate subset, the function computes:
+    
+    - (inside) positive rate of the objects associated with the candidate;
+    - (outside) positive rate of the other objects;
+    - candidate log-likelihood ratio (`logL1 - logL0_max`)
+    
+    The function ultimately returns:
+    
+    - the maximum log-likelihood ratio across candidates.
+    - the inside positive rates of the candidates (if not in simulation mode)
+    - the outside positive rates of the candidates (if not in simulation mode)
+    - the log likelihood ratios of the candidates (if not in simulation mode)
+
+    NOTE: in simulation mode we avoid allocating and updating some arrays because this achieves to
+          further speed up the computations.
+
+    Parameters
+    ----------
+    is_simulation : bool
+        Boolean flag indicating if this function must operate in simulation mode or not.
+    labels : np.ndarray
+        Binary labels (0/1) for all objects.
+    flat_ids : np.ndarray
+        Flattened object indices for all candidates.
+    indptr : np.ndarray
+        Candidate start offsets in `flat_ids`.
+    lenghts : np.ndarray
+        Number of objects per candidate.
+    P : int
+        Total number of positive labels in `labels`.
+    logL0_max : float
+        Log-likelihood under H0 (global Bernoulli model). Doesn't change when permuting the labels.
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray, np.ndarray, float]
+        `(inside_positive_rate, outside_positive_rate, logLR_per_candidate, max_logLR)`.
+    """
+
+    N = labels.size
+    max_lr = -np.inf
+    m = lengths.size
+    lr_candidates = np.empty(m if not is_simulation else 0)
+    in_rate_candidates = np.empty_like(lr_candidates)
+    out_rate_candidates = np.empty_like(lr_candidates)
+    for i in range(m):
+        start = indptr[i]
+        end   = indptr[i + 1]
+
+        # segmented sum without allocating flat_vals
+        p = 0
+        for k in range(start, end):
+            p += labels[flat_ids[k]]
+
+        n = lengths[i]
+        if (n <= 0) or (n >= N) : continue  # degenerate candidate (no object or contains all objects)
+
+        # Positive rate for the objects associated with the candidate, and for the objects that are not.
+        inside_rate  = p / n
+        outside_rate = (P - p) / (N - n)
+
+        # compute logL1 safely (xlogy/xlog1py equivalents)
+        logL1 = p * math.log(inside_rate) if p > 0 else 0.0
+        logL1 += (n - p) * math.log1p(-inside_rate) if n - p > 0 else 0.0
+        #
+        Pout = P - p
+        Nout = N - n
+        logL1 += Pout * math.log(outside_rate) if Pout > 0 else 0.0
+        #
+        neg_out = Nout - Pout
+        logL1 += neg_out * math.log1p(-outside_rate) if neg_out > 0 else 0.0
+
+        # Compute the log-likelihood ratio.
+        lr = logL1 - logL0_max
+        
+        # Add the ratio to the vector of log-LRs of the candidates.
+        if (not is_simulation) : 
+            lr_candidates[i] = lr
+            in_rate_candidates[i], out_rate_candidates[i] = inside_rate, outside_rate
+
+        # Update the candidate with the largest log-LR found so far.
+        if lr > max_lr:
+            max_lr = lr
+
+    return in_rate_candidates, out_rate_candidates, lr_candidates, max_lr
+
+
+@nb.njit(cache=True, nogil=True, parallel=True)
+def compute_simulations(num_sims : np.uint32, labels : np.ndarray, 
+                        flat_ids : np.ndarray, indptr : np.ndarray, lengths : np.ndarray,
+                        P : np.uint32, logL0_max : np.float32):
+    '''
+    This numba function is in charge of computing a given number of simulations in parallel.
+    To this end, it wraps the numba function 'max_loglr_streaming' and collects the results it produces.
+
+    Parameters
+    ----------
+    num_sims : np.uint32
+        Number of simulations to be performed.
+    labels : np.ndarray
+        Binary labels (0/1) for all objects.
+    flat_ids : np.ndarray
+        Flattened object indices for all candidates.
+    indptr : np.ndarray
+        Candidate start offsets in `flat_ids`.
+    lenghts : np.ndarray
+        Number of objects per candidate.
+    P : np.uint32
+        Total number of positive labels in `labels`.
+    logL0_max : np.float32
+        Log-likelihood under H0 (global Bernoulli model). Doesn't change when permuting the labels.
+
+    Returns
+    -------
+    max_logLR : float
+        The maximum log-likelihood ratio found during the simulations.
+    '''
+    
+    vec_max_LR = np.empty(num_sims, dtype=np.float32)
+    for s in nb.prange(num_sims) :
+        # Shuffle the labels.
+        np.random.seed(s)
+        shuffled_labels = labels.copy()
+        np.random.shuffle(shuffled_labels)
+
+        # Compute the max log-LR distribution expected under the assumption that H_0 is true.
+        vec_max_LR[s] = max_loglr_streaming(True,
+                                            shuffled_labels, 
+                                            flat_ids, indptr, lengths,
+                                            P, logL0_max)[-1]
+
+    return vec_max_LR
+
 
 
 class BernoulliSpatialScan:
@@ -156,19 +300,19 @@ class BernoulliSpatialScan:
             # Shuffle the original labels assigned to the objects. This represents the null hypotesis H_0, according to which
             # there is a single global distribution that governs the labels, i.e., there is not one or more sets of geographical regions
             # in which the associated objects have an average positive rate that is significantly different than that of the other objects. 
-            rng = np.random.default_rng()#(i)
+            rng = np.random.default_rng(i)
             shuffled_labels = rng.permutation(labels)
 
             # For the objects associated with each subset of cells, compute their positive rate vs that of the other objects.
-            _, _, _, vec_max_LR[i] = self.batch_max_likelihood_ratio(shuffled_labels,
-                                                                      self.flat_ids, self.indptr, self.lengths,
-                                                                      P, logL0_max)
+            vec_max_LR[i] = max_loglr_streaming(True, shuffled_labels,
+                                                self.flat_ids, self.indptr, self.lengths,
+                                                P, logL0_max)[-1]
             
 
         # 3 - Compute the max log likelihood ratio from the candidates when considering the original labels.
-        _, _, dist_lr_dataset, max_LR_dataset = self.batch_max_likelihood_ratio(labels,
-                                                                                self.flat_ids, self.indptr, self.lengths,
-                                                                                P, logL0_max)
+        _, _, dist_lr_dataset, max_LR_dataset = max_loglr_streaming(False,labels,
+                                                                    self.flat_ids, self.indptr, self.lengths,
+                                                                    P, logL0_max)
 
 
 
@@ -204,13 +348,6 @@ class BernoulliSpatialScan:
             `(reject_H0, simulated_max_logLR, observed_logLR_per_candidate, observed_max_logLR)`.
         """
 
-        ### JOBLIB HELPER FUNCTION ###
-        def one_simulation(i, labels, flat_ids, indptr, lenghts, P, logL0_max):
-            rng = np.random.default_rng()#(i)
-            shuffled_labels = rng.permutation(labels)
-            return self.batch_max_likelihood_ratio(shuffled_labels, flat_ids, indptr, lenghts, P, logL0_max)[3]
-
-
         ### JOBLIB MAIN CODE ###
         # 1 - Compute the L_0 likelihood, which models the likelihood of observing the labels in the data under the the assumption that the 
         # null hypotesis H_0 is true, i.e., there is a single global distribution that governs the labels. L_0 is constant across 
@@ -222,18 +359,15 @@ class BernoulliSpatialScan:
         logL0_max = P * np.log(rho) + (N - P) * np.log1p(-rho)
 
         # 2 - Compute the simulations' max log-LRs in parallel.
-        vec_max_LR = Parallel(n_jobs=-1,
-                              backend="loky",
-                              verbose=10,
-                              max_nbytes="1M",   # threshold that triggers auto-memmapping
-                              mmap_mode="r")(delayed(one_simulation)(i, labels, self.flat_ids, self.indptr, self.lengths, P, logL0_max) for i in range(self.num_simulations))
-        vec_max_LR = np.asarray(vec_max_LR, dtype=np.float32)
+        vec_max_LR = compute_simulations(self.num_simulations, labels, 
+                                         self.flat_ids, self.indptr, self.lengths, 
+                                         P, logL0_max)
                 
 
         # 3 - Compute the max log likelihood ratio from the candidates when considering the original labels.
-        _, _, dist_lr_dataset, max_LR_dataset = self.batch_max_likelihood_ratio(labels,
-                                                                                self.flat_ids, self.indptr, self.lengths,
-                                                                                P, logL0_max)
+        _, _, dist_lr_dataset, max_LR_dataset = max_loglr_streaming(False, labels,
+                                                                    self.flat_ids, self.indptr, self.lengths,
+                                                                    P, logL0_max)
 
 
 
@@ -287,80 +421,3 @@ class BernoulliSpatialScan:
         assert np.all(lenghts > 0), "Candidates with zero associated objects detected, should not happen!"
 
         return flat_ids, indptr, lenghts
-    
-
-    @staticmethod
-    def batch_max_likelihood_ratio(labels_objects: np.ndarray, 
-                                    flat_ids: np.ndarray, indptr: np.ndarray, lenghts: np.ndarray,
-                                    tot_sum_labels: int,
-                                    logL0_max: float) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
-        """
-        Vectorized computation of candidate Bernoulli log-likelihood ratios.
-
-        For each candidate subset, computes:
-        
-        - inside positive rate
-        - outside positive rate
-        - candidate log-likelihood ratio (`logL1 - logL0_max`)
-        
-        and returns the maximum log-likelihood ratio across candidates.
-
-        Parameters
-        ----------
-        labels_objects : np.ndarray
-            Binary labels (0/1) for all objects.
-        flat_ids : np.ndarray
-            Flattened object indices for all candidates.
-        indptr : np.ndarray
-            Candidate start offsets in `flat_ids`.
-        lenghts : np.ndarray
-            Number of objects per candidate.
-        tot_sum_labels : int
-            Total number of positive labels in `labels_objects`.
-        logL0_max : float
-            Log-likelihood under H0 (global Bernoulli model). Doesn't change when we permute the labels.
-
-        Returns
-        -------
-        tuple[np.ndarray, np.ndarray, np.ndarray, float]
-            `(inside_positive_rate, outside_positive_rate, logLR_per_candidate, max_logLR)`.
-        """
-
-        # Gather labels for all ids, then sum per candidate via segmented reduction.
-        flat_vals = labels_objects[flat_ids]
-        inside_sum = np.add.reduceat(flat_vals, indptr[:-1]).astype(np.float32, copy=False)
-
-
-        # Vectorized computation: for each candidate subset of cells, compute the positive rate of the objects
-        # associated with the subset vs the positive rate of the other objects.
-        # NOTE: we use np.divide with the `where` parameter to avoid divisions by zero.
-        p, n = inside_sum, lenghts
-        P, N = tot_sum_labels, labels_objects.size
-        inside_positive_rate  = np.divide(p, n, out=np.zeros_like(p, dtype=np.float32), where=(n > 0))
-        outside_positive_rate = np.divide(P - p, N - n, out=np.zeros_like(p, dtype=np.float32), where=((N - n) > 0))
-        
-
-        # Potentially numpy-unsafe computation of the log-likelihood under the alternative hypotesis.
-        #logL1 = (p * np.log(inside_positive_rate)
-        #         + (n - p) * np.log1p(-inside_positive_rate)
-        #         + (P - p) * np.log(outside_positive_rate)
-        #         + (N - n - (P - p)) * np.log1p(-outside_positive_rate))
-        
-        
-        # Safe alternative computation of the log-L1 via scipy functions. 
-        # NOTE: the log-likelihood is -inf when the positive rate is 0 or 1, which can happen when p==0 or p==n for the inside positive rate, 
-        # or when P-p==0 or N-n-(P-p)==0 for the outside positive rate. This is not a problem per se, since we are interested in the likelihood
-        # ratio, and if the likelihood under the alternative hypotesis is -inf, then the likelihood ratio will be 0, which is what we expect in
-        # these cases.
-        # valid = (n > 0) & (n < N) # optional: mask degenerate windows (n==0 or n==N)
-        # logL1 = np.full_like(inside_positive_rate, -np.inf, dtype=np.float32)
-        logL1 = ( xlogy(p, inside_positive_rate) + 
-                xlog1py((n - p), -inside_positive_rate) +
-                xlogy((P - p), outside_positive_rate) +
-                xlog1py((N - n - (P - p)), -outside_positive_rate) )
-
-        # Vectorized computation of the log-likelihood ratio of the candidates
-        logL1 -= logL0_max # logLR = logL1 - logL0_max
-        maxLogLR = float(np.nanmax(logL1))
-
-        return inside_positive_rate, outside_positive_rate, logL1, maxLogLR
