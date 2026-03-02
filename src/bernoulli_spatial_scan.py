@@ -242,7 +242,6 @@ class BernoulliSpatialScan:
         ### Store the references to the data structures holding the flattened objects ID lists associated with the candidates ###
         self.flat_ids, self.indptr, self.lengths = flat_ids, indptr, lengths
         
-
         # Perform some sanity checks.
         if self.num_simulations <= 0:
             raise ValueError("num_simulations must be > 0")
@@ -320,6 +319,7 @@ class BernoulliSpatialScan:
         reject = self._reject_H0(vec_max_LR, max_LR_dataset)
 
 
+        # 5 - Return the final results.
         return reject, vec_max_LR, dist_lr_dataset, max_LR_dataset
 
 
@@ -375,6 +375,7 @@ class BernoulliSpatialScan:
         reject = self._reject_H0(vec_max_LR, max_LR_dataset)
 
 
+        # 5 - Return the final results.
         return reject, vec_max_LR, dist_lr_dataset, max_LR_dataset
     
 
