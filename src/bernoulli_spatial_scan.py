@@ -11,7 +11,7 @@ import numba as nb
 @nb.njit(cache=True, nogil=True)
 def max_loglr_streaming(is_simulation : bool,
                         labels : np.ndarray, 
-                        flat_ids : np.ndarray, indptr : np.ndarray, lengths : np.ndarray, 
+                        flat_ids : np.ndarray, indptr : np.ndarray,
                         P : np.uint32, logL0_max : np.float32):
     """
     'Numbized' computation of the log-likelihood ratios of candidate subsets of cells, associated with some set of grids.
@@ -56,20 +56,22 @@ def max_loglr_streaming(is_simulation : bool,
 
     N = labels.size
     max_lr = -np.inf
-    m = lengths.size
-    lr_candidates = np.empty(m if not is_simulation else 0)
+    num_candidates = indptr.size - 1 # Number of candidates
+    lr_candidates = np.empty(num_candidates if not is_simulation else 0)
     in_rate_candidates = np.empty_like(lr_candidates)
     out_rate_candidates = np.empty_like(lr_candidates)
-    for i in range(m):
-        start = indptr[i]
-        end   = indptr[i + 1]
+    for i in range(num_candidates):
+        # Retrieve from 'indptr' the starting and ending positions in 'flat_ids' of the list of object IDs associated
+        # with the currently considered candidate.
+        start, end = indptr[i], indptr[i + 1]
 
-        # segmented sum without allocating flat_vals
+        # Online segmented sum (no need to allocate temp arrays).
         p = 0
         for k in range(start, end):
             p += labels[flat_ids[k]]
 
-        n = lengths[i]
+        # Retrieve the number of object IDs in the candidate's list.
+        n = end - start
         if (n <= 0) or (n >= N) : continue  # degenerate candidate (no object or contains all objects)
 
         # Positive rate for the objects associated with the candidate, and for the objects that are not.
@@ -95,16 +97,15 @@ def max_loglr_streaming(is_simulation : bool,
             lr_candidates[i] = lr
             in_rate_candidates[i], out_rate_candidates[i] = inside_rate, outside_rate
 
-        # Update the candidate with the largest log-LR found so far.
-        if lr > max_lr:
-            max_lr = lr
+        # Update the largest log-LR found so far from the candidates.
+        if lr > max_lr: max_lr = lr
 
     return in_rate_candidates, out_rate_candidates, lr_candidates, max_lr
 
 
 @nb.njit(cache=True, nogil=True, parallel=True)
 def compute_simulations(num_sims : np.uint32, labels : np.ndarray, 
-                        flat_ids : np.ndarray, indptr : np.ndarray, lengths : np.ndarray,
+                        flat_ids : np.ndarray, indptr : np.ndarray,
                         P : np.uint32, logL0_max : np.float32):
     '''
     This numba function is in charge of computing a given number of simulations in parallel.
@@ -143,7 +144,7 @@ def compute_simulations(num_sims : np.uint32, labels : np.ndarray,
         # Compute the max log-LR distribution expected under the assumption that H_0 is true.
         vec_max_LR[s] = max_loglr_streaming(True,
                                             shuffled_labels, 
-                                            flat_ids, indptr, lengths,
+                                            flat_ids, indptr,
                                             P, logL0_max)[-1]
 
     return vec_max_LR
@@ -212,7 +213,7 @@ class BernoulliSpatialScan:
 
     def __init__(self,
                  num_simulations: int, alpha: float,
-                 flat_ids : np.ndarray, indptr : np.ndarray, lengths : np.ndarray) :
+                 flat_ids : np.ndarray, indptr : np.ndarray) :
         """
         Initialize scan-test configuration and candidate indexing structures.
 
@@ -240,20 +241,16 @@ class BernoulliSpatialScan:
         self.alpha = float(alpha)
 
         ### Store the references to the data structures holding the flattened objects ID lists associated with the candidates ###
-        self.flat_ids, self.indptr, self.lengths = flat_ids, indptr, lengths
+        self.flat_ids, self.indptr = flat_ids, indptr
         
         # Perform some sanity checks.
         if self.num_simulations <= 0:
             raise ValueError("num_simulations must be > 0")
         if not (0.0 < self.alpha < 1.0):
             raise ValueError("alpha must be in (0, 1)")
-        if self.indptr.ndim != 1 or self.lengths.ndim != 1:
+        if self.indptr.ndim != 1:
             raise ValueError("indptr and lengths must be 1D arrays")
-        if self.indptr.size != self.lengths.size + 1:
-            raise ValueError("indptr must have size len(lengths) + 1")
-        if not np.all(self.lengths == np.diff(self.indptr)):
-            raise ValueError("lengths/indptr mismatch")
-        if not np.all(self.lengths > 0):
+        if not np.all(np.diff(self.indptr) > 0):
             raise ValueError("All candidates must have at least one object")
 
 
@@ -304,13 +301,13 @@ class BernoulliSpatialScan:
 
             # For the objects associated with each subset of cells, compute their positive rate vs that of the other objects.
             vec_max_LR[i] = max_loglr_streaming(True, shuffled_labels,
-                                                self.flat_ids, self.indptr, self.lengths,
+                                                self.flat_ids, self.indptr,
                                                 P, logL0_max)[-1]
             
 
         # 3 - Compute the max log likelihood ratio from the candidates when considering the original labels.
         _, _, dist_lr_dataset, max_LR_dataset = max_loglr_streaming(False,labels,
-                                                                    self.flat_ids, self.indptr, self.lengths,
+                                                                    self.flat_ids, self.indptr,
                                                                     P, logL0_max)
 
 
@@ -360,13 +357,13 @@ class BernoulliSpatialScan:
 
         # 2 - Compute the simulations' max log-LRs in parallel.
         vec_max_LR = compute_simulations(self.num_simulations, labels, 
-                                         self.flat_ids, self.indptr, self.lengths, 
+                                         self.flat_ids, self.indptr, 
                                          P, logL0_max)
                 
 
         # 3 - Compute the max log likelihood ratio from the candidates when considering the original labels.
         _, _, dist_lr_dataset, max_LR_dataset = max_loglr_streaming(False, labels,
-                                                                    self.flat_ids, self.indptr, self.lengths,
+                                                                    self.flat_ids, self.indptr,
                                                                     P, logL0_max)
 
 
@@ -407,18 +404,16 @@ class BernoulliSpatialScan:
             data = pickle.load(f)
 
         ### Load the dictory containing the flattened objects ID lists associated with the candidates ###
-        flat_ids, indptr, lenghts = data['flat_ids'], data['start_pos'], data['lengths']
+        flat_ids, indptr = data['flat_ids'], data['start_pos']
         del data
 
         # Ensure the big arrays are contiguous (helps memmap efficiency)
         flat_ids = np.ascontiguousarray(flat_ids)
         indptr   = np.ascontiguousarray(indptr)
-        lenghts  = np.ascontiguousarray(lenghts)
 
 
         # SANITY CHECK: check that there is no candidate with 0 associated objects. 
         # It shouldn't happen, but we do a quick check.
-        assert np.all(lenghts == np.diff(indptr)), "lenghts/indptr mismatch (or empty segments present)"
-        assert np.all(lenghts > 0), "Candidates with zero associated objects detected, should not happen!"
+        assert np.all(np.diff(indptr) > 0), "Candidates with zero associated objects detected, should not happen!"
 
-        return flat_ids, indptr, lenghts
+        return flat_ids, indptr
