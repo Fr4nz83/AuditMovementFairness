@@ -94,8 +94,7 @@ def max_loglr_streaming(is_simulation : bool,
         
         # Add the ratio to the vector of log-LRs of the candidates.
         if (not is_simulation) : 
-            lr_candidates[i] = lr
-            in_rate_candidates[i], out_rate_candidates[i] = inside_rate, outside_rate
+            lr_candidates[i], in_rate_candidates[i], out_rate_candidates[i] = lr, inside_rate, outside_rate
 
         # Update the largest log-LR found so far from the candidates.
         if lr > max_lr: max_lr = lr
@@ -306,7 +305,7 @@ class BernoulliSpatialScan:
             
 
         # 3 - Compute the max log likelihood ratio from the candidates when considering the original labels.
-        _, _, dist_lr_dataset, max_LR_dataset = max_loglr_streaming(False,labels,
+        inrate_dataset, outrate_dataset, dist_lr_dataset, max_LR_dataset = max_loglr_streaming(False,labels,
                                                                     self.flat_ids, self.indptr,
                                                                     P, logL0_max)
 
@@ -317,7 +316,7 @@ class BernoulliSpatialScan:
 
 
         # 5 - Return the final results.
-        return reject, vec_max_LR, dist_lr_dataset, max_LR_dataset
+        return reject, vec_max_LR, dist_lr_dataset, max_LR_dataset, inrate_dataset, outrate_dataset
 
 
     def parallel_simulations(self, labels : np.ndarray) -> tuple[bool, np.ndarray, np.ndarray, np.float32] :
@@ -362,7 +361,7 @@ class BernoulliSpatialScan:
                 
 
         # 3 - Compute the max log likelihood ratio from the candidates when considering the original labels.
-        _, _, dist_lr_dataset, max_LR_dataset = max_loglr_streaming(False, labels,
+        inrate_dataset, outrate_dataset, dist_lr_dataset, max_LR_dataset = max_loglr_streaming(False, labels,
                                                                     self.flat_ids, self.indptr,
                                                                     P, logL0_max)
 
@@ -373,7 +372,7 @@ class BernoulliSpatialScan:
 
 
         # 5 - Return the final results.
-        return reject, vec_max_LR, dist_lr_dataset, max_LR_dataset
+        return reject, vec_max_LR, dist_lr_dataset, max_LR_dataset, inrate_dataset, outrate_dataset
     
 
 
