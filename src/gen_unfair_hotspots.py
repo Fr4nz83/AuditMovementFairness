@@ -8,6 +8,14 @@ from shapely.affinity import rotate, scale
 from tqdm import tqdm
 
 
+### Constants used while generating hotspots... ###
+_INITIAL_HIGH_SCALE : float = 1.
+_GROWTH : float = 2.0
+_TOL : float = 0.0001
+
+
+### FUNCTIONS ###
+
 def eval_scale(in_poly, anchor_point, sindex, uid_values : np.ndarray,
                scale_factor : float, min_stops_object : int):
         
@@ -35,12 +43,6 @@ def gen_hotspot(df_polygons : gpd.GeoDataFrame, rtree_stops, stop_uid_values : n
     Generate a synthetic hotspot of unfairness.
     """
 
-    ### Constants used while generating hotspots... ###
-    initial_high_scale : float = 1.
-    growth : float = 2.0
-    tol : float = 0.0001
-
-
     # Randomly pick a census block from those that contain at least one stop segment.
     polygon_base = df_polygons.sample(1).geometry.iloc[0]
     # polygon_base.plot()
@@ -61,16 +63,15 @@ def gen_hotspot(df_polygons : gpd.GeoDataFrame, rtree_stops, stop_uid_values : n
 
     # 1 - Set the lower bound for the scaling.
     low_scale = 0.
-    num_low_objs = 0
 
 
     # 2 - Initial expansion of the upper bound, until we go beyond the target number of objects to associate.
-    high_scale = initial_high_scale
+    high_scale = _INITIAL_HIGH_SCALE
     high_list_objs, _ = eval_scale(polygon, anchor_point, rtree_stops, stop_uid_values,
                                    high_scale, min_stops_object)
     while high_list_objs.size < target_num_objs:
         low_scale = high_scale
-        high_scale *= growth
+        high_scale *= _GROWTH
         high_list_objs, _ = eval_scale(polygon, anchor_point, rtree_stops, stop_uid_values,
                                       high_scale, min_stops_object)
     # print(f"DEBUG: Initial high scale: {high_scale}, initial num objs high scale: {num_high_objs}")
@@ -78,7 +79,7 @@ def gen_hotspot(df_polygons : gpd.GeoDataFrame, rtree_stops, stop_uid_values : n
 
     # 3 - Binary search for the smallest scale with count >= target_objs. 
     best_diff_target = abs(target_num_objs - high_list_objs.size)
-    while (high_scale - low_scale) > tol:
+    while (high_scale - low_scale) > _TOL:
         
         # Find out how many objects associate with the polygon scaled with 'mid_scale'.
         mid_scale = 0.5 * (low_scale + high_scale)
@@ -111,9 +112,30 @@ def gen_hotspot(df_polygons : gpd.GeoDataFrame, rtree_stops, stop_uid_values : n
     return best_poly, best_list_objs
 
 
+def gen_unfair_labels(num_objs : int, list_objs_unfair : np.ndarray,
+                      global_pos_rate : float, hotspots_pos_rate : float) :
+    
+    # 1 - Generate the "fair" labels for a given number of objects. 
+    labels = np.random.default_rng().binomial(n=1, p=global_pos_rate, size=num_objs).astype(np.int8)
+
+    # 2 - Now, generate the unfair labels to be applied to a selected set of objects.
+    num_penalized_objects = list_objs_unfair.size
+    penalized_labels_obj = np.random.default_rng().binomial(n=1, p=hotspots_pos_rate, size=num_penalized_objects).astype(np.int8)
+
+    # 3 - Apply the unfair labels to the objects associated with 'penalized candidate'.
+    labels[list_objs_unfair] = penalized_labels_obj
+
+    return labels
+
+
+
 
 def gen_set_hotspots(df_polygons : gpd.GeoDataFrame, df_stops : gpd.GeoDataFrame,
-                    target_num_hotspots : int, target_num_objs : int) :
+                    target_num_hotspots : int, target_num_objs : int,
+                    global_pos_rate : float, hotspots_pos_rate : float) :
+    
+    # Count the total number of objects
+    tot_num_objs = df_stops["uid"].nunique()
     
     # Get the rtree associated with df_stops.
     rtree_stops = df_stops.sindex
@@ -124,9 +146,16 @@ def gen_set_hotspots(df_polygons : gpd.GeoDataFrame, df_stops : gpd.GeoDataFrame
     list_hotspots = []
     for idx_hotspot in tqdm(range(target_num_hotspots), desc="Generating hotspots...") :
     # for idx_hotspot in range(target_num_hotspots) :
-        hotspot = gen_hotspot(df_polygons, rtree_stops, stop_uid_values, 
-                              target_num_objs, random.randint(2, 6))
-        list_hotspots.append(hotspot)
+
+        # Generate the polygon of a hotspot that associates with a 'target_num_objs' objects.
+        poly_hotspot, list_objs_hotspot = gen_hotspot(df_polygons, rtree_stops, stop_uid_values, 
+                                                      target_num_objs, min_stops_object=2)
+        
+        # Generate the dataset of labels, injecting unfairness in the objects associated with the hotspot.
+        unfair_labels = gen_unfair_labels(tot_num_objs, list_objs_hotspot, global_pos_rate, hotspots_pos_rate)
+
+        # Add the unfair dataset to the list.
+        list_hotspots.append( (poly_hotspot, list_objs_hotspot, unfair_labels) )
         # break
 
     return list_hotspots
