@@ -55,7 +55,7 @@ def eval_buffer(in_poly : Polygon, sindex, uid_values : np.ndarray,
     # For each ID that occurs in 'list_uids', count the number of its occurrences.
     # Then, determine the number of distinct objects that have more than X stops in the polygon: these
     # will be associated with the polygon.
-    values, freq_values = np.unique(list_uids, return_counts=True)
+    values, freq_values = np.unique(list_uids, return_counts=True, sorted=False)
     selected_values = values[freq_values >= min_stops_object]
         
     return selected_values, out_poly
@@ -69,7 +69,6 @@ def gen_hotspot(polygon_base : Polygon, rtree_stops, stop_uid_values : np.ndarra
 
     # 1 - Rotate and translate the original polygon.
     polygon =  rotate_translate_poly(polygon_base)
-
 
 
     ### 2 - Now apply an expanding buffer to the rotated polygon, until it becomes associated with the
@@ -89,8 +88,8 @@ def gen_hotspot(polygon_base : Polygon, rtree_stops, stop_uid_values : np.ndarra
         high_list_objs, init_poly = eval_buffer(polygon, rtree_stops, stop_uid_values,
                                                 high_buffer, min_stops_object)
         # print(f"DEBUG: init: current high buffer: {high_buffer}")
-    # print(f"DEBUG: Initial high buffer: {high_buffer}, initial num objs high buffer: {high_list_objs.size}")
     best_poly, best_list_objs = init_poly, high_list_objs
+    # print(f"DEBUG: Initial high buffer: {high_buffer}, initial num objs high buffer: {high_list_objs.size}")
 
 
     # 2.3 - Binary search for the smallest buffer with count >= target_objs. 
@@ -124,17 +123,19 @@ def gen_hotspot(polygon_base : Polygon, rtree_stops, stop_uid_values : np.ndarra
         # If we have associated exactly the number of desired objects, exit the loop.
         if diff_target == 0 : break
 
+
     # Return the best buffered polygon found, as well as the number of objects it is associated with.
     return best_poly, best_list_objs
 
 
-def gen_unfair_labels(num_objs : int, list_objs_unfair : np.ndarray,
+def gen_unfair_labels(num_objs : int, list_lists_objs_unfair : np.ndarray,
                       global_pos_rate : float, hotspots_pos_rate : float) :
     
     # 1 - Generate the "fair" labels for a given number of objects. 
     labels = np.random.default_rng().binomial(n=1, p=global_pos_rate, size=num_objs).astype(np.int8)
 
     # 2 - Now, generate the unfair labels to be applied to a selected set of objects.
+    list_objs_unfair = np.unique(np.concatenate(list_lists_objs_unfair), sorted=False)
     num_penalized_objects = list_objs_unfair.size
     penalized_labels_obj = (np.random.default_rng().binomial(n=1, p=hotspots_pos_rate, size=num_penalized_objects)
                                                    .astype(np.int8))
@@ -149,7 +150,7 @@ def gen_unfair_labels(num_objs : int, list_objs_unfair : np.ndarray,
 
 def gen_unfair_datasets(df_polygons : gpd.GeoDataFrame, df_stops : gpd.GeoDataFrame,
                         num_unfair_datasets : int, 
-                        num_hotspots_dataset : int, target_num_objs : int,
+                        num_hotspots_per_dataset : int, target_num_objs : int,
                         global_pos_rate : float, hotspots_pos_rate : float) :
     
     # Count the total number of objects
@@ -161,25 +162,30 @@ def gen_unfair_datasets(df_polygons : gpd.GeoDataFrame, df_stops : gpd.GeoDataFr
     # Store the user IDs associated with the stops in a numpy array.
     stop_uid_values = df_stops["uid"].to_numpy()
 
+    # Randomly pick 'num_unfair_datasets * num_hotspots_per_dataset' census block (with repetitions) from those that contain
+    # at least one stop segment. They will be used as base polygons to create the hotspots.
+    list_base_polygons = [df_polygons.sample(num_hotspots_per_dataset).geometry.to_list() for i in range(num_unfair_datasets)]
     list_unfair_datasets = []
     for idx_dataset in tqdm(range(num_unfair_datasets), desc="Generating unfair datasets of labels...") :
     # for idx_dataset in range(num_unfair_datasets) :
 
-        # Randomly pick a census block from those that contain at least one stop segment.
-        polygon_base = df_polygons.sample(1)
-        # print(f"DEBUG: sampled polygon idx: {polygon_base.index.values[0]}")
-        polygon_base = polygon_base.geometry.iloc[0]
-        # polygon_base.plot()
-
         # Generate the polygon of a hotspot that associates with a 'target_num_objs' objects.
-        poly_hotspot, list_objs_hotspot = gen_hotspot(polygon_base, rtree_stops, stop_uid_values, 
-                                                      target_num_objs, min_stops_object=2)
+        list_poly_hotspots = []
+        list_lists_objs_hotspots = []
+        for idx_hotspot in range(num_hotspots_per_dataset) :
+            polygon_base = list_base_polygons[idx_dataset][idx_hotspot]
+            poly_hotspot, list_objs_hotspot = gen_hotspot(polygon_base, rtree_stops, stop_uid_values, 
+                                                          target_num_objs, min_stops_object=2)
+            
+            # Append the information related to the hotspot just created.
+            list_poly_hotspots.append(poly_hotspot)
+            list_lists_objs_hotspots.append(list_objs_hotspot)
         
-        # Generate the dataset of labels, injecting unfairness in the objects associated with the hotspot.
-        unfair_labels = gen_unfair_labels(tot_num_objs, list_objs_hotspot, global_pos_rate, hotspots_pos_rate)
+        # Generate the dataset of labels, injecting unfairness in the objects associated with the hotspots.
+        unfair_labels = gen_unfair_labels(tot_num_objs, list_lists_objs_hotspots, global_pos_rate, hotspots_pos_rate)
 
         # Add the unfair dataset to the list.
-        list_unfair_datasets.append( (poly_hotspot, list_objs_hotspot, unfair_labels) )
+        list_unfair_datasets.append( (list_poly_hotspots, list_lists_objs_hotspots, unfair_labels) )
         # break
 
 
