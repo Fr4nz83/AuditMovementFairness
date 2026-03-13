@@ -1,8 +1,11 @@
+import pandas as pd
 import geopandas as gpd
 import numpy as np
 import random
 from shapely import affinity, maximum_inscribed_circle
 from tqdm import tqdm
+from itertools import combinations
+from functools import reduce
 
 from shapely import Polygon, MultiPolygon
 from geopandas.sindex import SpatialIndex
@@ -42,16 +45,17 @@ def rotate_translate_poly(poly : Polygon) -> Polygon :
     only its orientation and position.
     """
 
-    # Rotate the original polygon by a random amount of degrees, using as a pivot one
-    # of its internal points (picked up randomly).
+    # Determine the width and height of the original polygon.
+    minx, miny, maxx, maxy = poly.bounds
+    w, h = maxx - minx, maxy - miny
+
+    # Rotate the original polygon by a random amount of degrees.
     polygon = affinity.rotate(poly,
                               angle=random.uniform(0, 360),
                               use_radians=False)
     
     # Translate the rotated polygon in a random 2D direction but not too far,
-    # i.e., the x and y offsets are chosen according to the rotated polygon's bbox.
-    minx, miny, maxx, maxy = poly.bounds
-    w, h = maxx - minx, maxy - miny
+    # i.e., the x and y offsets are chosen according to the original polygon's bbox.
     polygon = affinity.translate(polygon,
                                  xoff=random.uniform(-0.5 * w, 0.5 * w),
                                  yoff=random.uniform(-0.5 * h, 0.5 * h))
@@ -272,11 +276,10 @@ def gen_unfair_labels(num_objs : int, list_lists_objs_unfair : np.ndarray,
     return labels
 
 
-
-
 def gen_unfair_datasets(df_polygons : gpd.GeoDataFrame, df_stops : gpd.GeoDataFrame,
                         num_unfair_datasets : int, 
-                        num_hotspots_per_dataset : int, target_num_objs : int,
+                        num_hotspots_per_dataset : int,
+                        num_objs_per_hotspot : int,
                         global_pos_rate : float, hotspots_pos_rate : float) -> list[tuple[list[Polygon],
                                                                                           list[list[np.ndarray]],
                                                                                           np.ndarray]] :
@@ -336,8 +339,8 @@ def gen_unfair_datasets(df_polygons : gpd.GeoDataFrame, df_stops : gpd.GeoDataFr
     for idx_dataset in tqdm(range(num_unfair_datasets), desc="Generating unfair datasets of labels...") :
     # for idx_dataset in range(num_unfair_datasets) :
 
-        # Pick 'num_hotspots_per_dataset' randomly from 'df_polygons', and then transform each of them applying
-        # a rotation and translation.
+        # Pick 'num_hotspots_per_dataset' randomly from 'df_polygons', without repetitions, and then transform each
+        # of them applying a rotation and translation.
         base_polygons = list(map(rotate_translate_poly, df_polygons.sample(num_hotspots_per_dataset).geometry.to_list()))
 
         # Generate the hotspots using the sampled and transformed polygons, associating each of them with 
@@ -347,7 +350,7 @@ def gen_unfair_datasets(df_polygons : gpd.GeoDataFrame, df_stops : gpd.GeoDataFr
         for idx_hotspot in range(num_hotspots_per_dataset) :
             polygon_base = base_polygons[idx_hotspot]
             poly_hotspot, list_objs_hotspot = gen_hotspot(polygon_base, rtree_stops, stop_uid_values, 
-                                                          target_num_objs, min_stops_object=2)
+                                                          num_objs_per_hotspot, min_stops_object=2)
             
             # Append the information related to the hotspot just created.
             list_poly_hotspots.append(poly_hotspot)
