@@ -341,8 +341,10 @@ def gen_unfair_labels(num_objs : int, list_lists_objs_unfair : np.ndarray,
     return labels
 
 
-def gen_unfair_datasets_multiregion_hotspots(df_polygons : gpd.GeoDataFrame, df_stops : gpd.GeoDataFrame,
+def gen_unfair_datasets_multiregion_hotspots(df_polygons : gpd.GeoDataFrame, 
                                              map_uid_blocks : pd.DataFrame,
+                                             stop_uid_values : np.ndarray, 
+                                             rtree_stops : SpatialIndex,
                                              num_unfair_datasets : int, 
                                              num_hotspots_per_dataset : int,
                                              num_regions_per_hotspot : int,
@@ -358,17 +360,14 @@ def gen_unfair_datasets_multiregion_hotspots(df_polygons : gpd.GeoDataFrame, df_
     # distinct regions, as we can use uids that have at least a stop segment in more than one block as 'seeds' to build such
     # hotspots.
     seed_uids = map_uid_blocks.groupby(level='uid').size()
+
+    # Count the total number of objects.
+    tot_num_objs = seed_uids.index.nunique()
+    print(tot_num_objs)
+
+    # Select the user IDs that have at least a stop centroid in 'num_regions_per_hotspot' or more separate regions.
     seed_uids = seed_uids.loc[seed_uids >= num_regions_per_hotspot].index.to_numpy()
     # print(f"DEBUG: Seed uids: {seed_uids}")
-
-    # Count the total number of objects
-    tot_num_objs = df_stops["uid"].nunique()
-    
-    # Get the rtree associated with df_stops.
-    rtree_stops = df_stops.sindex
-
-    # Store the user IDs associated with the stops in a numpy array.
-    stop_uid_values = df_stops["uid"].to_numpy()
 
 
     list_unfair_datasets = []

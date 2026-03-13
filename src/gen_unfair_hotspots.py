@@ -276,7 +276,10 @@ def gen_unfair_labels(num_objs : int, list_lists_objs_unfair : np.ndarray,
     return labels
 
 
-def gen_unfair_datasets(df_polygons : gpd.GeoDataFrame, df_stops : gpd.GeoDataFrame,
+def gen_unfair_datasets(df_polygons : gpd.GeoDataFrame,
+                        map_uid_blocks : pd.DataFrame,
+                        stop_uid_values : np.ndarray, 
+                        rtree_stops : SpatialIndex,
                         num_unfair_datasets : int, 
                         num_hotspots_per_dataset : int,
                         num_objs_per_hotspot : int,
@@ -323,15 +326,9 @@ def gen_unfair_datasets(df_polygons : gpd.GeoDataFrame, df_stops : gpd.GeoDataFr
         - `unfair_labels` is the generated binary label vector.
     """
 
-
     # Count the total number of objects
-    tot_num_objs = df_stops["uid"].nunique()
-    
-    # Get the rtree associated with df_stops.
-    rtree_stops = df_stops.sindex
+    tot_num_objs = map_uid_blocks.groupby(level='uid').size().index.nunique()
 
-    # Store the user IDs associated with the stops in a numpy array.
-    stop_uid_values = df_stops["uid"].to_numpy()
 
     # Randomly pick 'num_unfair_datasets * num_hotspots_per_dataset' census block (with repetitions) from those that contain
     # at least one stop segment. They will be used as base polygons to create the hotspots.
