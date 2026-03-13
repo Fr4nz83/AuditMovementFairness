@@ -371,7 +371,8 @@ def gen_unfair_datasets_multiregion_hotspots(df_polygons : gpd.GeoDataFrame,
 
 
     list_unfair_datasets = []
-    for _ in tqdm(range(num_unfair_datasets), desc="Generating unfair datasets of labels with multiregion hotspots...") :        
+    # for _ in tqdm(range(num_unfair_datasets), desc="Generating unfair datasets of labels with multiregion hotspots...") :
+    for _ in range(num_unfair_datasets) :        
 
         # Generate the hotspots using the sampled and transformed polygons, associating each of them with 
         # 'target_num_objs' objects.
