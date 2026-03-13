@@ -363,7 +363,7 @@ def gen_unfair_datasets_multiregion_hotspots(df_polygons : gpd.GeoDataFrame,
 
     # Count the total number of objects.
     tot_num_objs = seed_uids.index.nunique()
-    print(tot_num_objs)
+    # print(tot_num_objs)
 
     # Select the user IDs that have at least a stop centroid in 'num_regions_per_hotspot' or more separate regions.
     seed_uids = seed_uids.loc[seed_uids >= num_regions_per_hotspot].index.to_numpy()
