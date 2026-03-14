@@ -51,11 +51,9 @@ def eval_buffer_multiregion(in_multipoly : MultiPolygon, sindex : SpatialIndex, 
 
 
     # Find out the set of users that appear in ALL the polygons. 
-    uid_intersection = (
-        reduce(np.intersect1d, list_selected_values)
-        if list_selected_values
-        else np.array([], dtype=uid_values.dtype)
-    )
+    uid_intersection = ( reduce(np.intersect1d, list_selected_values)
+                         if list_selected_values
+                         else np.array([], dtype=uid_values.dtype) )
         
     return uid_intersection, out_multipoly
 
@@ -109,7 +107,7 @@ def init_upper_bound_multiregion(base_multipolygon: MultiPolygon,
                     right = mid
                     continue
                 
-                # Mid buffer multipolygon's polygons do not intersect: retrieve the mid infos.
+                # Mid buffer multipolygon's polygons do not intersect: retrieve the mid-lookup infos.
                 mid_list_objs, mid_multipoly = mid_res
 
                 # Check if we reached the target number of objects.
@@ -174,11 +172,11 @@ def gen_multiregion_hotspot(base_multipolygon : MultiPolygon, rtree_stops : Spat
         return None
     
     low_buffer, high_buffer, best_list_objs, best_multipoly = res
+    best_diff_target = abs(target_num_objs - best_list_objs.size)
     # print(f"DEBUG: Initial high buffer: {high_buffer}, low buffer: {low_buffer}, initial num objs high buffer: {best_list_objs.size}")
 
 
     # 3 - Binary search for the smallest buffer with count >= target_objs. 
-    best_diff_target = abs(target_num_objs - best_list_objs.size)
     while (high_buffer - low_buffer) > _TOL:
         
         # Find out how many objects associate with the polygon buffered with 'mid_buffer'.
@@ -195,15 +193,15 @@ def gen_multiregion_hotspot(base_multipolygon : MultiPolygon, rtree_stops : Spat
             low_buffer = mid_buffer
             continue
 
+
         # Update the boundaries of the search interval.
         mid_list_objs, mid_multipoly = res
         if mid_list_objs.size >= target_num_objs:
-            # print(f"DEBUG: Over the target: {mid_list_objs.size}>={target_num_objs}")
+            # print(f"DEBUG: Over the target ({mid_buffer}): {mid_list_objs.size}>={target_num_objs}")
             high_buffer = mid_buffer
         else:
-            # print(f"DEBUG: Under the target: {mid_list_objs.size}<{target_num_objs}")
+            # print(f"DEBUG: Under the target ({mid_buffer}): {mid_list_objs.size}<{target_num_objs}")
             low_buffer = mid_buffer
-
 
         # Update the best polygon found if the absolute difference with the target num_objs is lower
         # than what has been previously found.
@@ -212,12 +210,16 @@ def gen_multiregion_hotspot(base_multipolygon : MultiPolygon, rtree_stops : Spat
             # print(f"DEBUG: Better buffered polygon found, difference: {diff_target} ({mid_list_objs.size})")
             best_multipoly, best_list_objs, best_diff_target = mid_multipoly, mid_list_objs, diff_target
         
+        # If we have associated exactly the number of desired objects, return the multipolygon immediately.
+        if diff_target == 0 : return best_multipoly, best_list_objs
 
-        # If we have associated exactly the number of desired objects, exit the loop.
-        if diff_target == 0 : break
 
-
-    # Return the best buffered multipolygon found, as well as the number of objects it is associated with.
+    # We have a valid "best" multipolygon to return: check how many objects are associated with it
+    # and see if it is "near" enough the target number.
+    if best_diff_target > 10 : 
+        #if best_list_objs.size < target_num_objs :
+        #print(f"Multipoly is way below the target! {best_list_objs.size}")
+        return None
     return best_multipoly, best_list_objs
 
 
