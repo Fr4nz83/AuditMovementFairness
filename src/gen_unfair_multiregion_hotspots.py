@@ -15,6 +15,7 @@ from geopandas.sindex import SpatialIndex
 _INITIAL_HIGH_BUFFER : float = 1.
 _GROWTH : float = 2.0
 _TOL : float = 0.1
+_TOL_OFF_TARGET = 10
 
 
 ### FUNCTIONS ###
@@ -176,7 +177,7 @@ def gen_multiregion_hotspot(base_multipolygon : MultiPolygon, rtree_stops : Spat
     # print(f"DEBUG: Initial high buffer: {high_buffer}, low buffer: {low_buffer}, initial num objs high buffer: {best_list_objs.size}")
 
 
-    # 3 - Binary search for the smallest buffer with count >= target_objs. 
+    # 3 - Binary search for the smallest buffer with count >= target_objs.
     while (high_buffer - low_buffer) > _TOL:
         
         # Find out how many objects associate with the polygon buffered with 'mid_buffer'.
@@ -215,11 +216,12 @@ def gen_multiregion_hotspot(base_multipolygon : MultiPolygon, rtree_stops : Spat
 
 
     # We have a valid "best" multipolygon to return: check how many objects are associated with it
-    # and see if it is "near" enough the target number.
-    if best_diff_target > 10 : 
-        #if best_list_objs.size < target_num_objs :
-        #print(f"Multipoly is way below the target! {best_list_objs.size}")
-        return None
+    # and see if it is "near" enough the target number. Sometimes, if a binary search is exploring a negative interval
+    # for the buffer, the way shapely "erodes" polygons can make the count of associated objects jump suddenly and there's
+    # nothing we can do -- we just discard the multipolygon. 
+    if best_diff_target > _TOL_OFF_TARGET : return None
+        # print(f"Multipoly is way off target! {low_buffer}, {high_buffer}, {low_list_objs.size}, {high_list_objs.size}, {best_list_objs.size}")
+        
     return best_multipoly, best_list_objs
 
 
