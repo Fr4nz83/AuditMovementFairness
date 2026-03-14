@@ -278,7 +278,9 @@ def parallel_user_to_cells_mapping(set_grids : dict, stops_df : pd.DataFrame, pa
     items = list(set_grids.items())              # [((l,o), grid), ...]
     chunks = split_into_chunks(items, num_proc)  # partition into p chunks (or fewer if not enough items)
 
-    Parallel(n_jobs=num_proc, backend="loky")(
+    Parallel(n_jobs=num_proc, backend="threading", verbose=50,
+             max_nbytes="10K",         # very low on purpose, to force memmapping
+             mmap_mode="r")(
         delayed(process_grid_chunk)(chunk, stops_df, top_k_cells_user)
         for chunk in chunks
     )

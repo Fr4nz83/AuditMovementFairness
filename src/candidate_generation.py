@@ -67,7 +67,7 @@ class CandidateGeneration() :
             # print("Managing the case in which we are generating candidates from combinations of cells.")
 
             base_lvls = list(range(dim_itemset - 1)) if dim_itemset > 2 else 0
-            print(f"base_lvls: {base_lvls}")
+            # print(f"base_lvls: {base_lvls}")
 
             for keys, sub in res_intersections.loc[:, 'list_users'].groupby(level=base_lvls, sort=False) :
                 # If the multi-index has size 2, then the first "n-1" levels is just one level, and thus isn't a tuple.
@@ -125,18 +125,18 @@ class CandidateGeneration() :
             list_candidates_test.append(res_intersections)
 
             # 2 - Generate the set of candidates for the current level...
-            print(f"Generating candidates of size '{l+1} cells' from viable candidates of size '{l} cells'...")
+            # print(f"Generating candidates of size '{l+1} cells' from viable candidates of size '{l} cells'...")
             res_intersections = self._gen_candidates_level(res_intersections, cnt_threshold)
             # print(f"DEBUG: Candidates generated: {type(res_intersections)} {res_intersections}")
-            print(f"Number of candidates with at least {cnt_threshold} associated objects found: {len(res_intersections)}")
+            # print(f"Number of candidates with at least {cnt_threshold} associated objects found: {len(res_intersections)}")
 
             # 3 - Check if we haven't generate more candidates: if so, exit the loop.
             if len(res_intersections) == 0 : 
-                print("No more viable candidates generated; exiting the candidate generation loop!")
+                # print("No more viable candidates generated; exiting the candidate generation loop!")
                 break
 
             l += 1
-        print(f"Total number of candidates of length up to {l} cells generated: {sum(len(df) for df in list_candidates_test)}")
+        # print(f"Total number of candidates of length up to {l} cells generated: {sum(len(df) for df in list_candidates_test)}")
 
 
         # Return a single dataframe containing the candidates computed at the various levels of the generation process.
