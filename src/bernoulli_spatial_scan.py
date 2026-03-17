@@ -201,9 +201,9 @@ class BernoulliSpatialScan:
         reject_H0 = p_value <= self.alpha
 
         # DEBUG: a few prints...
-        print(f"Position in sorted MC sample: {rank}/{self.num_simulations} (extreme if below position {int(self.num_simulations * self.alpha)})")
-        print(f"Monte Carlo p-value: {p_value:.6f}")
-        print(f"Decision: {'Reject H0' if reject_H0 else 'Do NOT reject H0'}")
+        # print(f"DEBUG: Position in sorted MC sample: {rank}/{self.num_simulations} (extreme if below position {int(self.num_simulations * self.alpha)})")
+        # print(f"DEBUG: Monte Carlo p-value: {p_value:.6f}")
+        # print(f"DEBUG: Decision: {'Reject H0' if reject_H0 else 'Do NOT reject H0'}")
 
         return reject_H0
 

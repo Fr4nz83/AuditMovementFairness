@@ -396,7 +396,7 @@ def gen_unfair_datasets_multiregion_hotspots(df_polygons : gpd.GeoDataFrame,
                                                                        seed_uids, 
                                                                        num_regions_per_hotspot)
                 # print(f"DEBUG: Base multipolygon: {multipolygon_base}")
-                # break
+
                 
                 # Generate an hotspot made of 'num_regions_per_hotspot' separate regions.
                 res = gen_multiregion_hotspot(multipolygon_base, rtree_stops, stop_uid_values, 
@@ -404,7 +404,9 @@ def gen_unfair_datasets_multiregion_hotspots(df_polygons : gpd.GeoDataFrame,
                 
                 # If it is not possible to build an hotspot from the sampled and transformed regions,
                 # we have to discard this multipolygon.
-                if res is None : continue
+                if res is None : 
+                    # print(f"DEBUG: Not possible to build an hotspot from this multipolygon...")
+                    continue
                     
                 # We have succesfully built a multiregion hotspot!
                 multipoly_hotspot, list_objs_hotspot = res
