@@ -333,8 +333,8 @@ def gen_unfair_datasets(df_polygons : gpd.GeoDataFrame,
     # Randomly pick 'num_unfair_datasets * num_hotspots_per_dataset' census block (with repetitions) from those that contain
     # at least one stop segment. They will be used as base polygons to create the hotspots.
     list_unfair_datasets = []
-    for idx_dataset in tqdm(range(num_unfair_datasets), desc="Generating unfair datasets of labels...") :
-    # for idx_dataset in range(num_unfair_datasets) :
+    # for idx_dataset in tqdm(range(num_unfair_datasets), desc="Generating unfair datasets of labels...") :
+    for idx_dataset in range(num_unfair_datasets) :
 
         # Pick 'num_hotspots_per_dataset' randomly from 'df_polygons', without repetitions, and then transform each
         # of them applying a rotation and translation.
