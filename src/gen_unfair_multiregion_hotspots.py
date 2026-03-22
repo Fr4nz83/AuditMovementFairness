@@ -353,6 +353,7 @@ def gen_unfair_datasets_multiregion_hotspots(df_polygons : gpd.GeoDataFrame,
                                              num_hotspots_per_dataset : int,
                                              num_regions_per_hotspot : int,
                                              num_objs_per_hotspot : int,
+                                             min_stops_object : int,
                                              global_pos_rate : float, hotspots_pos_rate : float) -> list[tuple[list[Polygon],
                                                                                                             list[list[np.ndarray]],
                                                                                                             np.ndarray]] :
@@ -400,7 +401,7 @@ def gen_unfair_datasets_multiregion_hotspots(df_polygons : gpd.GeoDataFrame,
                 
                 # Generate an hotspot made of 'num_regions_per_hotspot' separate regions.
                 res = gen_multiregion_hotspot(multipolygon_base, rtree_stops, stop_uid_values, 
-                                              num_objs_per_hotspot, min_stops_object=1)
+                                              num_objs_per_hotspot, min_stops_object=min_stops_object)
                 
                 # If it is not possible to build an hotspot from the sampled and transformed regions,
                 # we have to discard this multipolygon.
