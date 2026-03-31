@@ -19,6 +19,8 @@ To facilitate the reader, we made available the dataset used in the experimental
 
 ## How to set up the Python environment to run our assessment approach
 
+In our repository we made available a YAML file that specifies all the dependencies needed to set up an appropriate conda environment. Assuming that you have installed conda, please run ```conda env create -f geo.yaml''', which will create the "geo" environment.
+
 
 ## How to run our assessment approach
 
