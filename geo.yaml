@@ -14,7 +14,7 @@ dependencies:
   - scikit-mobility
   - osmnx
   - numpy
-  - pandas
+  - pandas=2.3.3
   - notebook
   - ipykernel
   - pyarrow
