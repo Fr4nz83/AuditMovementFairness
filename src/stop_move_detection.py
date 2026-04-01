@@ -1,7 +1,13 @@
 import pandas as pd
 import numpy as np
+
+
+# Monkey-patch to fix an incompatibility issue between the latest shapely versions, and the last version of scikit-mobility.
+import shapely.ops
+shapely.ops.cascaded_union = shapely.ops.unary_union
 import skmob
 from skmob.preprocessing import detection
+
 
 def stop_detection(df : pd.DataFrame, col_lat : str = 'lat', col_lon : str = 'lon', col_uid : str = 'uid', col_time : str = 'datetime',
                    min_minutes_stop : float = 20.0, stop_spatial_radius_km : float = 0.05) -> pd.DataFrame :
