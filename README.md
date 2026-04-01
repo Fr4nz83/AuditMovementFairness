@@ -4,17 +4,11 @@ This repository contains the code behind the paper "Assessing Predictive Models 
 
 In this repository you will find:
 
-- Indications on how to generate synthetic movement data with the Patterns of Life simulator;
 - The source code used to implement the assessment approach described in the paper;
 - The source code used to generate the synthetic unfair auditable datasets used in the experimental evaluation;
-- The source code used to conduct the experimental evaluation.
-
-
-## How to generate the synthetic movement data
-
-We generate a dataset of syntetic trajectories with the [Patterns of Life simulator](https://github.com/onspatial/generate-mobility-dataset). The simulator's configuration has been modified such that it generates the movement data of 100,000 agents moving within the city of Atlanta, Georgia, USA, with a sampling rate of 2 minutes. The seed that has been used for reproducibility purposes has been set to 2.
-
-The simulator stores the generated movement data in very large .tsv files. Those that we use in our experimental evaluation  occupy 225.56 GiB overall. Hence, to facilitate the reader, we made available the movement data used in the experimental evaluation in a parquet file, which can be opened with, e.g., the Python pandas library. Although compressed, the dataframe stored within the parquet file is still very large, hence we recommend to open it in a system with enough RAM.
+- The source code used to conduct the experimental evaluation;
+- A description of how the synthetic movement data was generated with the Patterns of Life simulator;
+- How to execute the source code, and how to do it to reproduce the results of the paper's experimental evaluation.
 
 
 ## How to set up the Python environment to run our assessment approach
@@ -32,13 +26,26 @@ The repository has the following structure:
 - the ```experiments``` folder contain the various groups of datasets used during the experimental evaluation. The folder is also used by the notebooks to store the results obtained during the evaluation.
 
 
-## How to use our assessment approach and reproduce the article's results
+## How the synthetic movement data was generated
 
-We implemented our assessment approach as a sequence of Jupyter Notebooks that must be executed in order. We detail each of these notebook below, in the correct order of execution. All the notebooks have been documented so that a reader can understand the operations conducted within them.
+We generate a dataset of syntetic trajectories with the [Patterns of Life simulator](https://github.com/onspatial/generate-mobility-dataset). The simulator's configuration has been modified such that it generates the movement data of 100,000 agents moving within the city of Atlanta, Georgia, USA, with a sampling rate of 2 minutes. The seed that has been used for reproducibility purposes has been set to 2.
+
+The simulator stores the generated movement data in very large .tsv files. Those that we use in our experimental evaluation  occupy 225.56 GiB overall. Hence, to facilitate the reader, we made available the movement data used in the experimental evaluation in a parquet file, which can be opened with, e.g., the Python pandas library. The dataframe stored within the parquet file however takes a lot of RAM once loaded, so please the description of the notebook numbered **1** on how to use this dataset.
+
+
+## How to execute our assessment approach and reproduce the article's experimental evaluation
+
+We implemented our assessment approach as a sequence of Jupyter Notebooks that must be executed in a certain order. We detail what each of these notebooks do below, and we present them in the correct order of execution. Please note that all the notebooks have been documented so that a reader can understand the operations conducted within them.
+
+***
+
+### Movement data preprocessing and subsequent preparations
 
 The first set of notebooks deals with **preparing the simulator's movement data for subsequent operations**. 
 
-- **1 - Parse&Compress trajectories of PatternsOfLife Simulator.ipynb**: this notebook parses the Patterns of Life simulator's movement data stored in a set of ```.tsv``` files, and stores them into a single large ```.parquet``` file. It then subsequently compresses the movement data in the parquet file, producing a new noticeably smaller parquet file. Note that the reader can skip the parsing operation, as we already provide the parquet file with the original movement data.
+- **1 - Parse&Compress trajectories of PatternsOfLife Simulator.ipynb**: this notebook parses the Patterns of Life simulator's movement data stored in a set of large ```.tsv``` files, and stores them into a single ```.parquet``` file. It then subsequently compresses the movement data in the parquet file, producing a new noticeably smaller parquet file. 
+We report that these two operations require to have a machine with a very large amount of RAM, especially the compression operation which requires around 140 GiB.
+Accordingly, the reader can skip both operations, as we already provide the parquet files of both the original and compressed movement data.
 
 - **2 - Trajectory Dataset Stop Detection.ipynb**: this notebook takes as input a dataset of trajectories, and detects their stop segments. Note that the execution of this notebook can be skipped, as we also provide a parquet file containing the stop segments detected from the compressed trajectories. Finally, note that the stay detection algorithm can be configured by customizing the ```min_minutes_stop``` and ```max_radius_stop_meters``` variables. The notebook writes its output in the ```data_simulator``` folder. Note that the reader can skip executing this notebook, as we already provide the parquet file with the stop segments.
 
@@ -50,9 +57,13 @@ The first set of notebooks deals with **preparing the simulator's movement data 
 
 - **6 - Filter and flatten candidates.ipynb**: this notebook prepares the candidates generated by the previous notebook for spatial scan statistics processing -- more precisely, it flattens the various data structures that contain the candidates.  The notebook writes its output in the ```data_simulator``` folder. Finally, note that the reader can skip executing this notebook, as we already provide the flattened candidates in a pickle file.
 
+This terminates the notebooks that implement the first four steps of our approach, i.e., the steps that focus on the preparation of the simulator's movement data for subsequent steps.
+
 ***
 
-This terminates the notebooks that implement the first four steps of our approach, i.e., the steps that focus on the preparation of the simulator's movement data for subsequent steps. Next, we need to deal with the **experimental evaluation**. We execute the following set of notebooks.
+### Experimental evaluation
+
+Next, we need to deal with the **experimental evaluation**. We execute the following set of notebooks.
 
 - **Exp - Generator of unfair auditable datasets.ipynb**: this notebook generates the various groups of unfair auditable datasets required to run the experiments. To configure the generation process, the user must customize the ```params_datasets``` variable in the notebook. Even in the generation process is massively parallelized w.r.t. the datasets in a group, we report that certain groups of datasets requires a very long execution time to be generated. Hence, in the case a user wishes to execute this notebook to generate their own unfair auditable datasets, we recommend to use a machine with a large number of CPU cores. The notebook writes its output in the ```experiments``` folder. In any case, the reader can skip executing this notebook, as we already provide the unfair datasets used during the experimental evaluation.
 
