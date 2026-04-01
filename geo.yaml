@@ -1,4 +1,4 @@
-name: geo
+name: geo_test
 channels:
   - conda-forge
   - https://repo.anaconda.com/pkgs/main
@@ -7,7 +7,6 @@ channels:
 dependencies:
   - python=3.12
   - geopandas
-  - geos
   - shapely
   - pyproj
   - rtree
@@ -16,8 +15,7 @@ dependencies:
   - osmnx
   - numpy
   - pandas
-  - jupyterlab
+  - notebook
   - ipykernel
   - pyarrow
   - plotly
-prefix: D:\miniconda3\envs\geo
