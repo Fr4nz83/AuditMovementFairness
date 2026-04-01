@@ -1,19 +1,24 @@
 # Assessing Predictive Models for Fairness Based on Movement Patterns
 
-This repository contains the code behind the paper "Assessing Predictive Models for Fairness Based on Movement Patterns".
+This repository contains the code accompanying the paper **"Assessing Predictive Models for Fairness Based on Movement Patterns"**.
 
-In this repository you will find:
+In this repository, you will find:
 
 - The source code used to implement the assessment approach described in the paper;
 - The source code used to generate the synthetic unfair auditable datasets used in the experimental evaluation;
 - The source code used to conduct the experimental evaluation;
 - A description of how the synthetic movement data was generated with the Patterns of Life simulator;
-- How to execute the source code, and how to do it to reproduce the results of the paper's experimental evaluation.
+- Instructions on how to execute the code and reproduce the results of the paper’s experimental evaluation.
 
+## How to set up the Python environment needed to run the assessment approach
 
-## How to set up the Python environment needed to run our assessment approach
+This repository contains a YAML file, `geo.yaml`, that specifies all the dependencies needed to create a suitable conda environment. Assuming that conda is installed, please run:
 
-Our repository contains a YAML file, ```geo.yaml```, that specifies all the dependencies needed to set up an appropriate conda environment. Assuming that conda is installed, please run ```conda env create -f geo.yaml```, which will create the "geo" environment required to run our approach and recreate our experimental evaluation.
+```bash
+conda env create -f geo.yaml
+```
+
+This will create the `geo_test` environment required to run the approach and reproduce the experimental evaluation.
 
 
 ## Structure of the repository
@@ -21,14 +26,14 @@ Our repository contains a YAML file, ```geo.yaml```, that specifies all the depe
 The repository has the following structure:
 
 - the root folder contains the notebooks that implement our approach and the experimental evaluation
-- the ```src``` folder contains the various classes and functions used by the notebooks.
-- the ```data_simulator``` folder contains the simulator's original movement data. The folder is also used by various notebooks to store the various information derived from the movement data, i.e., compressed trajectories, stop and move segments, materialized grids, object-to cells mappings, and generated candidates.
-- the ```experiments``` folder contain the various groups of datasets used during the experimental evaluation. The folder is also used by the notebooks to store the results obtained during the evaluation.
+- the `src` folder contains the various classes and functions used by the notebooks.
+- the `data_simulator` folder contains the simulator's original movement data. The folder is also used by various notebooks to store the various information derived from the movement data, i.e., compressed trajectories, stop and move segments, materialized grids, object-to cells mappings, and generated candidates.
+- the `experiments` folder contain the various groups of datasets used during the experimental evaluation. The folder is also used by the notebooks to store the results obtained during the evaluation.
 
 
 ## How the synthetic movement data was generated
 
-We generate a dataset of syntetic trajectories with the [Patterns of Life simulator](https://github.com/onspatial/generate-mobility-dataset). The simulator's configuration has been modified such that it generates the movement data of 100,000 agents moving within the city of Atlanta, Georgia, USA, with a sampling rate of 2 minutes. The seed that has been used for reproducibility purposes has been set to 2.
+We generate a dataset of syntetic trajectories with the [Patterns of Life simulator](https://github.com/onspatial/generate-mobility-dataset). The simulator's configuration has been modified such that it generates the movement data of 100,000 agents moving within the city of Atlanta, Georgia, USA, with a sampling rate of 2 minutes. The seed that has been used for reproducibility purposes has been set to 2. More details about the dataset are provided in our article.
 
 The simulator stores the generated movement data in very large .tsv files. Those that we use in our experimental evaluation  occupy 225.56 GiB overall. Hence, to facilitate the reader, we made available the movement data used in the experimental evaluation in a parquet file, which can be opened with, e.g., the Python pandas library. The dataframe stored within the parquet file however takes a lot of RAM once loaded, so please refer to the description below of the notebook numbered **1** about how to use this dataset.
 
