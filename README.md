@@ -11,7 +11,7 @@ In this repository you will find:
 - How to execute the source code, and how to do it to reproduce the results of the paper's experimental evaluation.
 
 
-## How to set up the Python environment to run our assessment approach
+## How to set up the Python environment needed to run our assessment approach
 
 Our repository contains a YAML file, ```geo.yaml```, that specifies all the dependencies needed to set up an appropriate conda environment. Assuming that conda is installed, please run ```conda env create -f geo.yaml```, which will create the "geo" environment required to run our approach and recreate our experimental evaluation.
 
