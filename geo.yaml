@@ -10,11 +10,13 @@ dependencies:
   - geos
   - shapely
   - pyproj
-  - anaconda
   - rtree
   - fiona
   - scikit-mobility
   - osmnx
   - numpy
   - pandas
+  - jupyterlab
+  - pyarrow
+  - plotly
 prefix: D:\miniconda3\envs\geo
