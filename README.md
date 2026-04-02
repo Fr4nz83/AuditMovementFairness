@@ -10,6 +10,9 @@ In this repository, you will find:
 - A description of how the synthetic movement data was generated with the Patterns of Life simulator;
 - Instructions on how to execute the code and reproduce the results of the paper’s experimental evaluation.
 
+To facilitate reuse and speed up the evaluation of the article's results, we have uploaded the synthetic movement data, as well as various intermediate outputs produced by our approach during its different steps, to an [anonymized Figshare repository](https://figshare.com/s/93b04d0a6128d3e7ca32). Please download the `.zip` archives from that repository if you want to skip executing any of the steps of our approach, or if you want to compare the output produced locally with that used for the results shown in the article. Please note that the `.zip` archives should be decompressed in the **root folder** of this repository. 
+
+
 ## How to set up the Python environment needed to run the assessment approach
 
 This repository contains a YAML file, `geo.yaml`, that specifies all the dependencies needed to create a suitable conda environment. Assuming that conda is installed, please run:
@@ -36,11 +39,6 @@ The repository has the following structure:
 We generate a dataset of synthetic trajectories with the [Patterns of Life simulator](https://github.com/onspatial/generate-mobility-dataset). The simulator's configuration was modified so that it generates the movement data of 100,000 agents moving within the city of Atlanta, Georgia, USA, with a sampling rate of 2 minutes. The seed used for reproducibility was set to 2.
 
 The simulator stores the generated movement data in very large `.tsv` files that occupy 225.56 GiB overall. We therefore made the movement data used in our work available as a parquet file, which can be opened with, for example, the Python pandas library. The dataframe stored in the parquet file, however, still requires a large amount of RAM once loaded, so please refer to the description below of notebook **1** for guidance on how to use this dataset.
-
-
-## Where to download the movement data and the intermediate outputs of the approach
-
-To facilitate reuse and speed up the evaluation of the article's results, we have uploaded the synthetic movement data, as well as various intermediate outputs produced by our approach during its different steps, to an [anonymized Figshare repository](https://figshare.com/s/93b04d0a6128d3e7ca32). Please download the `.zip` archives from that repository if you want to skip executing any of the steps of our approach, or if you want to compare the output produced locally with that used for the results shown in the article.
 
 
 ## How to execute our assessment approach and reproduce the article's experimental evaluation
