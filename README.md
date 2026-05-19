@@ -10,7 +10,9 @@ In this repository, you will find:
 - A description of how the synthetic movement data was generated with the Patterns of Life simulator;
 - Instructions on how to execute the code and reproduce the results of the article's experimental evaluation.
 
-To facilitate reuse and speed up the evaluation of the article's results, we have uploaded the synthetic movement data and auditable datasets, as well as various intermediate outputs produced by our approach during its different steps, to an [anonymized Figshare repository](https://figshare.com/s/93b04d0a6128d3e7ca32). Please download the `.zip` archives from that repository if you want to skip executing any of the steps of our approach, or if you want to compare the output produced locally with that used for the results shown in the article. Please note that the `.zip` archives should be decompressed in the **root folder** of this repository. 
+To facilitate reuse and speed up the evaluation of the article's results, we have uploaded the synthetic movement data and auditable datasets, as well as various intermediate outputs produced by our approach during its different steps, to an [anonymized Figshare repository](https://figshare.com/s/93b04d0a6128d3e7ca32). Please download the `.zip` archives from that repository if you want to skip executing any of the steps of our approach, or if you want to compare the output produced locally with that used for the results shown in the article. Please note that the `.zip` archives should be decompressed in the **root folder** of this repository.
+
+**_Suggestion for a quick reproducibility path_**: reviewers who wish to reproduce the figures and tables shown in the article do not need to run the full pipeline from the raw simulator data. Indeed, we provide the intermediate outputs and experimental results needed to reproduce the article’s plots and tables, or execute just the steps a reviewer might be interested in. In particular, after downloading the source code repository, and then decompressing the `.zip` archives from the dataset repository in the source code repository's root folder, reviewers can directly start from the notebook **8** to regenerate the CSV files, or directly from the notebook **9** to regenerate the plots in the Figures 3–7 if they use the CSV files provided in the dataset repository. Finally, notebook **10** reproduces the exploratory example shown in Section 7.
 
 
 ## How to set up the Python environment needed to run the assessment approach
@@ -43,7 +45,19 @@ The simulator stores the generated movement data in very large `.tsv` files that
 
 ## How to execute our assessment approach and reproduce the article's results
 
-We implemented our assessment approach as a sequence of Jupyter notebooks that must be executed in a specific order. Below we describe what each notebook takes as input, wha it does, what it outputs, and the expected order of execution. Please note that all the notebooks have been documented so that readers can understand the operations conducted within them, and reproduce the results shown in Section 6 of the article.
+We implemented our assessment approach as a sequence of Jupyter notebooks that must be executed in a specific order. More precisely:
+
+- **Notebook 1**: *skippable* if using provided parquet files
+- **Notebook 2**: *skippable* if using provided stops file
+- **Notebook 3**: *not required* by the current approach
+- **Notebooks 4–6**: *skippable* if using provided grids/mappings/candidates
+- **Notebook Exp (unfair dataset generator)**: *skippable* if using provided unfair auditable datasets
+- **Notebook 7**: *skippable* if using provided scan-statistic results
+- **Notebook 8**: *skippable* if using provided CSV summaries
+- **Notebook 9**: *needed* to regenerate Figures 3–7
+- **Notebook 10**: *needed* to reproduce the Section 7 exploratory example
+
+Below we describe in detail what each notebook takes as input and what it does and outputs, in the expected order of execution. Please note that all the notebooks have been documented so that reviewers can understand the operations conducted within them, and reproduce the results shown in Sections 6 and 7 of the article.
 
 ***
 
