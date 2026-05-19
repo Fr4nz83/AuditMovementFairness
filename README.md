@@ -19,11 +19,18 @@ To facilitate reuse and speed up the evaluation of the article's results, we hav
 
 This repository contains a YAML file, `geo.yaml`, that specifies all the dependencies needed to create a suitable conda environment. Assuming that conda is installed, please run:
 
-```bash
+```
 conda env create -f geo.yaml
 ```
 
-This will create the `geo_test` environment required to run the approach and reproduce the experimental evaluation.
+This will create the `geo_test` environment required to run the approach and reproduce the experimental evaluation. Then run the commands:
+
+```
+conda activate geo_test
+jupyter notebook
+```
+
+This will activate the newly created environment and open the graphical interface needed to execute the various notebooks implementing the approach and experimental evaluation shown in the article.
 
 
 ## Structure of the repository
